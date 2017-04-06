@@ -207,7 +207,7 @@ public:
     //! </pre>
     Hash_DRBG(const byte* entropy=NULLPTR, size_t entropyLength=STRENGTH, const byte* nonce=NULLPTR,
         size_t nonceLength=0, const byte* personalization=NULLPTR, size_t personalizationLength=0)
-        : NIST_DRBG(), m_c(SEEDLENGTH), m_v(SEEDLENGTH)
+        : NIST_DRBG(), m_c(SEEDLENGTH), m_v(SEEDLENGTH), m_reseed(0)
     {
         if (entropy != NULLPTR && entropyLength != 0)
             DRBG_Instantiate(entropy, entropyLength, nonce, nonceLength, personalization, personalizationLength);
@@ -321,7 +321,7 @@ public:
     //! </pre>
     HMAC_DRBG(const byte* entropy=NULLPTR, size_t entropyLength=STRENGTH, const byte* nonce=NULLPTR,
         size_t nonceLength=0, const byte* personalization=NULLPTR, size_t personalizationLength=0)
-        : NIST_DRBG(), m_k(HASH::DIGESTSIZE), m_v(HASH::DIGESTSIZE)
+        : NIST_DRBG(), m_k(HASH::DIGESTSIZE), m_v(HASH::DIGESTSIZE), m_reseed(0)
     {
         if (entropy != NULLPTR && entropyLength != 0)
             DRBG_Instantiate(entropy, entropyLength, nonce, nonceLength, personalization, personalizationLength);
@@ -518,6 +518,29 @@ void Hash_DRBG<HASH, STRENGTH, SEEDLENGTH>::Hash_Generate(const byte* additional
         word128 r = static_cast<word128>(w1) + w2 + w3 + w4;
         PutWord(false, BIG_ENDIAN_ORDER, p1, static_cast<word64>(r));
         i -= 8; j -= 8; k=0; carry = static_cast<int>(r >> 64);
+
+        // The default implementation and a couple of others cause a crash in
+        // VS2005, VS2008 and VS2105. This seems to work with all MS compilers.
+#elif defined(CRYPTOPP_MSC_VERSION)
+        byte* p1 = m_v.begin()+SEEDLENGTH-8;
+        byte* p2 = m_c.begin()+SEEDLENGTH-8;
+        byte* p3 = h.begin()+HASH::DIGESTSIZE-8;
+
+        const word64 w1 = GetWord<word64>(false, BIG_ENDIAN_ORDER, p1);
+        const word64 w2 = GetWord<word64>(false, BIG_ENDIAN_ORDER, p2);
+        const word64 w3 = GetWord<word64>(false, BIG_ENDIAN_ORDER, p3);
+        const word64 w4 = m_reseed;
+
+        const word64 r1 = (w1 & 0xffffffff) + (w2 & 0xffffffff) + (w3 & 0xffffffff) + (w4 & 0xffffffff);
+        carry = static_cast<int>(r1 >> 32);
+        const word64 r2 = (w1 >> 32) + (w2 >> 32) + (w3 >> 32) + (w4 >> 32) + carry;
+        carry = static_cast<int>(r2 >> 32);
+
+        const word64 r = (r2 << 32) + (r1 & 0xffffffff);
+        PutWord(false, BIG_ENDIAN_ORDER, p1, r);
+        i -= 8; j -= 8; k=0;
+
+        // Default implementation, but slower on some machines.
 #else
         while (k>=0)
         {
@@ -541,6 +564,8 @@ void Hash_DRBG<HASH, STRENGTH, SEEDLENGTH>::Hash_Generate(const byte* additional
             i--; carry >>= 8;
         }
 
+        // CRYPTOPP_WORD128_AVAILABLE causes -Wunused-but-set-variable
+        CRYPTOPP_UNUSED(k);
     }
 
     m_reseed++;
