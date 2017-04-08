@@ -157,6 +157,23 @@ ifeq ($(IS_X86)$(IS_X32)$(IS_CYGWIN)$(IS_MINGW)$(SUN_COMPILER),00000)
  endif
 endif
 
+# .intel_syntax wasn't supported until GNU assembler 2.10
+# No DISABLE_NATIVE_ARCH with CRYPTOPP_DISABLE_ASM for now
+#  See http://github.com/weidai11/cryptopp/issues/395
+ifeq ($(HAVE_GAS)$(GAS210_OR_LATER),10)
+CXXFLAGS += -DCRYPTOPP_DISABLE_ASM
+else
+ifeq ($(HAVE_GAS)$(GAS217_OR_LATER),10)
+CXXFLAGS += -DCRYPTOPP_DISABLE_SSSE3
+DISABLE_NATIVE_ARCH := 1
+else
+ifeq ($(HAVE_GAS)$(GAS219_OR_LATER),10)
+CXXFLAGS += -DCRYPTOPP_DISABLE_AESNI
+DISABLE_NATIVE_ARCH := 1
+endif
+endif
+endif
+
 # BEGIN NATIVE_ARCH
 # Guard use of -march=native (or -m{32|64} on some platforms)
 # Don't add anything if -march=XXX or -mtune=XXX is specified
@@ -217,19 +234,6 @@ endif
 ifeq ($(findstring -DCRYPTOPP_CLANG_INTEGRATED_ASSEMBLER,$(CXXFLAGS)),)
 CLANG_INTEGRATED_ASSEMBLER := 1
 CXXFLAGS += -DCRYPTOPP_CLANG_INTEGRATED_ASSEMBLER=1
-endif
-endif
-
-# .intel_syntax wasn't supported until GNU assembler 2.10
-ifeq ($(HAVE_GAS)$(GAS210_OR_LATER),10)
-CXXFLAGS += -DCRYPTOPP_DISABLE_ASM
-else
-ifeq ($(HAVE_GAS)$(GAS217_OR_LATER),10)
-CXXFLAGS += -DCRYPTOPP_DISABLE_SSSE3
-else
-ifeq ($(HAVE_GAS)$(GAS219_OR_LATER),10)
-CXXFLAGS += -DCRYPTOPP_DISABLE_AESNI
-endif
 endif
 endif
 
@@ -387,13 +391,6 @@ endif # ELF/ELF64
 endif # CXXFLAGS
 endif # Gold
 
-# Aligned access testing. Issue 'make aligned'.
-ifneq ($(filter align aligned,$(MAKECMDGOALS)),)
-ifeq ($(findstring -DCRYPTOPP_NO_UNALIGNED_DATA_ACCESS,$(CXXFLAGS)),)
-CXXFLAGS += -DCRYPTOPP_NO_UNALIGNED_DATA_ACCESS
-endif # CXXFLAGS
-endif # Aligned access
-
 # GCC code coverage. Issue 'make coverage'.
 ifneq ($(filter coverage,$(MAKECMDGOALS)),)
 ifeq ($(findstring -coverage,$(CXXFLAGS)),)
@@ -518,8 +515,8 @@ deps GNUmakefile.deps:
 	$(CXX) $(strip $(CXXFLAGS)) -MM *.cpp > GNUmakefile.deps
 
 # CXXFLAGS are tuned earlier.
-.PHONY: asan ubsan align aligned
-asan ubsan align aligned: libcryptopp.a cryptest.exe
+.PHONY: asan ubsan
+asan ubsan: libcryptopp.a cryptest.exe
 
 # CXXFLAGS are tuned earlier. Applications must use linker flags
 #  -Wl,--gc-sections (Linux and Unix) or -Wl,-dead_strip (OS X)
@@ -585,7 +582,7 @@ clean:
 distclean: clean
 	-$(RM) adhoc.cpp adhoc.cpp.copied GNUmakefile.deps benchmarks.html cryptest.txt cryptest-*.txt
 	@-$(RM) CMakeCache.txt Makefile CTestTestfile.cmake cmake_install.cmake cryptopp-config-version.cmake
-	@-$(RM) cryptopp.tgz *.o *.bc *.ii *.s *~
+	@-$(RM) cryptopp.tgz *.o *.bc *.ii *~
 	@-$(RM) -r $(SRCS:.cpp=.obj) *.suo *.sdf *.pdb Win32/ x64/ ipch/
 	@-$(RM) -r CMakeFiles/
 	@-$(RM) -r $(DOCUMENT_DIRECTORY)/
@@ -700,21 +697,21 @@ endif
 .PHONY: trim
 trim:
 ifneq ($(IS_DARWIN),0)
-	sed -i '' -e's/[[:space:]]*$$//' *.sh *.h *.cpp *.asm *.S *.sln *.vcxproj *.filters GNUmakefile GNUmakefile-cross
+	sed -i '' -e's/[[:space:]]*$$//' *.sh *.h *.cpp *.asm *.s *.sln *.vcxproj *.filters GNUmakefile GNUmakefile-cross
 	make convert
 else
-	sed -i -e's/[[:space:]]*$$//' *.sh *.h *.cpp *.asm *.S *.sln *.vcxproj *.filters GNUmakefile GNUmakefile-cross
+	sed -i -e's/[[:space:]]*$$//' *.sh *.h *.cpp *.asm *.s *.sln *.vcxproj *.filters GNUmakefile GNUmakefile-cross
 	make convert
 endif
 
 .PHONY: convert
 convert:
 	@-$(CHMOD) 0700 TestVectors/ TestData/ TestScripts/
-	@-$(CHMOD) 0600 $(TEXT_FILES) *.asm *.S *.zip *.cmake TestVectors/*.txt TestData/*.dat
+	@-$(CHMOD) 0600 $(TEXT_FILES) *.asm *.s *.zip *.cmake TestVectors/*.txt TestData/*.dat
 	@-$(CHMOD) 0700 $(EXEC_FILES) *.sh *.cmd TestScripts/*.sh TestScripts/*.pl TestScripts/*.cmd
 	@-$(CHMOD) 0700 *.cmd *.sh GNUmakefile GNUmakefile-cross TestScripts/*.sh TestScripts/*.pl
 	-unix2dos --keepdate --quiet $(TEXT_FILES) *.asm *.cmd *.cmake TestScripts/*.pl TestScripts/*.cmd
-	-dos2unix --keepdate --quiet GNUmakefile GNUmakefile-cross *.S *.sh TestScripts/*.sh
+	-dos2unix --keepdate --quiet GNUmakefile GNUmakefile-cross *.s *.sh TestScripts/*.sh
 ifneq ($(IS_DARWIN),0)
 	@-xattr -c *
 endif
@@ -760,11 +757,10 @@ endif # Dependencies
 
 # Run rdrand-nasm.sh to create the object files
 ifeq ($(USE_NASM),1)
-rdrand.o: rdrand.h rdrand.cpp rdrand.S
+rdrand.o: rdrand.h rdrand.cpp rdrand.s
 	$(CXX) $(strip $(CXXFLAGS)) -DNASM_RDRAND_ASM_AVAILABLE=1 -DNASM_RDSEED_ASM_AVAILABLE=1 -c rdrand.cpp
-rdrand-x86.o: ;
-rdrand-x32.o: ;
-rdrand-x64.o: ;
+rdrand-%.o:
+	./rdrand-nasm.sh
 endif
 
 # Only use CRYPTOPP_DATA_DIR if its not set in CXXFLAGS
