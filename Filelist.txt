@@ -10,6 +10,8 @@ algparam.cpp
 algparam.h
 arc4.cpp
 arc4.h
+aria.cpp
+aria.h
 argnames.h
 asn.cpp
 asn.h
@@ -215,7 +217,9 @@ rdrand.asm
 rdrand.cpp
 rdrand.h
 rdtables.cpp
-regtest.cpp
+regtest1.cpp
+regtest2.cpp
+regtest3.cpp
 resource.h
 rijndael.cpp
 rijndael.h
@@ -318,6 +322,7 @@ Install.txt
 Filelist.txt
 TestData/3desval.dat
 TestData/3wayval.dat
+TestData/aria.dat
 TestData/camellia.dat
 TestData/cast128v.dat
 TestData/cast256v.dat
@@ -382,9 +387,11 @@ TestData/xtrdh342.dat
 TestVectors/Readme.txt
 TestVectors/aes.txt
 TestVectors/all.txt
+TestVectors/aria.txt
 TestVectors/blake2.txt
 TestVectors/blake2b.txt
 TestVectors/blake2s.txt
+TestVectors/aria.txt
 TestVectors/camellia.txt
 TestVectors/ccm.txt
 TestVectors/chacha.txt
@@ -410,6 +417,8 @@ TestVectors/salsa.txt
 TestVectors/seal.txt
 TestVectors/seed.txt
 TestVectors/sha.txt
+TestVectors/sha2.txt
+TestVectors/sha3.txt
 TestVectors/sha1_fips_180.txt
 TestVectors/sha1_160_fips_180.txt
 TestVectors/sha2_fips_180.txt
