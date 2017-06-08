@@ -30,8 +30,12 @@
 #include "aes.h"
 
 // Aggressive stack checking with VS2005 SP1 and above.
-#if (CRYPTOPP_MSC_VERSION >= 1410)
+#if (_MSC_FULL_VER >= 140050727)
 # pragma strict_gs_check (on)
+#endif
+
+#if CRYPTOPP_MSC_VERSION
+# pragma warning(disable: 4505 4355)
 #endif
 
 USING_NAMESPACE(CryptoPP)
@@ -52,7 +56,9 @@ void RegisterFactories(Test::TestClass suites)
 	if ((suites & Test::Unkeyed) == Test::Unkeyed)
 		RegisterFactories1();
 
-	if ((suites & Test::SharedKey) == Test::SharedKey)
+	if ((suites & Test::SharedKeyMAC) == Test::SharedKeyMAC ||
+		(suites & Test::SharedKeyMAC) == Test::SharedKeyStream ||
+		(suites & Test::SharedKeyMAC) == Test::SharedKeyBlock)
 		RegisterFactories2();
 
 	if ((suites & Test::PublicKey) == Test::PublicKey)

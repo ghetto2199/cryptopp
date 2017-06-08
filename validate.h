@@ -5,8 +5,11 @@
 #define CRYPTOPP_VALIDATE_H
 
 #include "cryptlib.h"
+#include "integer.h"
+#include "misc.h"
 
 #include <iostream>
+#include <sstream>
 #include <iomanip>
 #include <ctime>
 #include <cctype>
@@ -18,14 +21,14 @@ bool ValidateAll(bool thorough);
 bool TestSettings();
 bool TestOS_RNG();
 // bool TestSecRandom();
-bool TestAutoSeeded();
+bool TestRandomPool();
+#if !defined(NO_OS_DEPENDENCE)
 bool TestAutoSeededX917();
-
+#endif
 #if (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64)
 bool TestRDRAND();
 bool TestRDSEED();
 #endif
-
 bool ValidateBaseCode();
 bool ValidateCRC32();
 bool ValidateCRC32C();
@@ -107,7 +110,12 @@ bool ValidateESIGN();
 bool ValidateHashDRBG();
 bool ValidateHmacDRBG();
 
-#if defined(CRYPTOPP_DEBUG) && !defined(CRYPTOPP_IMPORTS)
+// If CRYPTOPP_DEBUG or CRYPTOPP_COVERAGE is in effect, then perform additional tests
+#if (defined(CRYPTOPP_DEBUG) || defined(CRYPTOPP_COVERAGE) || defined(CRYPTOPP_VALGRIND)) && !defined(CRYPTOPP_IMPORTS)
+# define CRYPTOPP_EXTENDED_VALIDATION 1
+#endif
+
+#if defined(CRYPTOPP_EXTENDED_VALIDATION)
 // http://github.com/weidai11/cryptopp/issues/92
 bool TestSecBlock();
 // http://github.com/weidai11/cryptopp/issues/64
@@ -120,6 +128,11 @@ bool TestRounding();
 bool TestHuffmanCodes();
 // http://github.com/weidai11/cryptopp/issues/346
 bool TestASN1Parse();
+// Additional tests due to no coverage
+bool TestCompressors();
+bool TestEncryptors();
+bool TestMersenne();
+bool TestSharing();
 #endif
 
 #if 1
@@ -171,7 +184,7 @@ private:
 #endif
 
 // Safer functions on Windows for C&A, https://github.com/weidai11/cryptopp/issues/55
-static std::string TimeToString(const time_t& t)
+inline std::string TimeToString(const time_t& t)
 {
 #if (CRYPTOPP_MSC_VERSION >= 1400)
 	tm localTime = {};
@@ -196,6 +209,43 @@ static std::string TimeToString(const time_t& t)
 		{ str.erase(pos, 1); }
 
 	return str;
+}
+
+// Coverity finding
+template <class T, bool NON_NEGATIVE>
+inline T StringToValue(const std::string& str)
+{
+	std::istringstream iss(str);
+
+	// Arbitrary, but we need to clear a Coverity finding TAINTED_SCALAR
+	if (iss.str().length() > 25)
+		throw InvalidArgument(str + "' is too long");
+
+	T value;
+	iss >> std::noskipws >> value;
+
+	// Use fail(), not bad()
+	if (iss.fail() || !iss.eof())
+		throw InvalidArgument(str + "' is not a value");
+
+	if (NON_NEGATIVE && value < 0)
+		throw InvalidArgument(str + "' is negative");
+
+	return value;
+}
+
+// Coverity finding
+template<>
+inline int StringToValue<int, true>(const std::string& str)
+{
+	Integer n(str.c_str());
+	long l = n.ConvertToLong();
+
+	int r;
+	if (!SafeConvert(l, r))
+		throw InvalidArgument(str + "' is not an integer value");
+
+	return r;
 }
 
 // Functions that need a RNG; uses AES inf CFB mode with Seed.

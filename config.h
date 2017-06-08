@@ -258,8 +258,9 @@ const lword LWORD_MAX = W64LIT(0xffffffffffffffff);
 #else
 	#define CRYPTOPP_NATIVE_DWORD_AVAILABLE 1
 	#if defined(__alpha__) || defined(__ia64__) || defined(_ARCH_PPC64) || defined(__x86_64__) || defined(__mips64) || defined(__sparc64__)
-		#if defined(__GNUC__) && !defined(__INTEL_COMPILER) && !(CRYPTOPP_GCC_VERSION == 40001 && defined(__APPLE__)) && CRYPTOPP_GCC_VERSION >= 30400
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER) && !(CRYPTOPP_GCC_VERSION == 40001 && defined(__APPLE__)) && !(defined(__GNUC__) && CRYPTOPP_GCC_VERSION < 50000 && defined(_ARCH_PPC64)) && CRYPTOPP_GCC_VERSION >= 30400
 			// GCC 4.0.1 on MacOS X is missing __umodti3 and __udivti3
+			// GCC 4.8.3 and bad uint128_t ops on PPC64/POWER7 (Issue 421)
 			// mode(TI) division broken on amd64 with GCC earlier than GCC 3.4
 			typedef word32 hword;
 			typedef word64 word;
@@ -353,7 +354,7 @@ NAMESPACE_END
 	// 4786: identifier was truncated in debug information
 	// 4355: 'this' : used in base member initializer list
 	// 4910: '__declspec(dllexport)' and 'extern' are incompatible on an explicit instantiation
-#	pragma warning(disable: 4127 4231 4250 4251 4275 4505 4512 4660 4661 4786 4355 4910)
+#	pragma warning(disable: 4127 4512 4661)
 	// Security related, possible defects
 	// http://blogs.msdn.com/b/vcblog/archive/2010/12/14/off-by-default-compiler-warnings-in-visual-c.aspx
 #	pragma warning(once: 4191 4242 4263 4264 4266 4302 4826 4905 4906 4928)
@@ -423,7 +424,7 @@ NAMESPACE_END
 	#define CRYPTOPP_BOOL_SSE2_INTRINSICS_AVAILABLE 0
 #endif
 
-#if !defined(CRYPTOPP_DISABLE_ASM) && !defined(CRYPTOPP_DISABLE_SSSE3) && !defined(_M_ARM) && (_MSC_VER >= 1500 || (CRYPTOPP_GCC_VERSION >= 50000) || (CRYPTOPP_LLVM_CLANG_VERSION >= 30500) || (defined(__SSSE3__) && defined(__SSSE3__)))
+#if !defined(CRYPTOPP_DISABLE_ASM) && !defined(CRYPTOPP_DISABLE_SSSE3) && !defined(_M_ARM) && (_MSC_VER >= 1500 || (defined(__SSSE3__) && defined(__SSSE3__)))
 	#define CRYPTOPP_BOOL_SSSE3_INTRINSICS_AVAILABLE 1
 #else
 	#define CRYPTOPP_BOOL_SSSE3_INTRINSICS_AVAILABLE 0
@@ -763,12 +764,21 @@ NAMESPACE_END
 
 // ************** Deprecated ***************
 
-#if (CRYPTOPP_GCC_VERSION >= 40500) || (CRYPTOPP_LLVM_CLANG_VERSION >= 20800)
-# define CRYPTOPP_DEPRECATED(msg) __attribute__((deprecated (msg)));
+#if (CRYPTOPP_GCC_VERSION >= 40500) || (CRYPTOPP_LLVM_CLANG_VERSION >= 20800) || (CRYPTOPP_APPLE_CLANG_VERSION >= 40200)
+# define CRYPTOPP_DEPRECATED(msg) __attribute__((deprecated (msg)))
 #elif (CRYPTOPP_GCC_VERSION)
-# define CRYPTOPP_DEPRECATED(msg) __attribute__((deprecated));
+# define CRYPTOPP_DEPRECATED(msg) __attribute__((deprecated))
 #else
 # define CRYPTOPP_DEPRECATED(msg)
+#endif
+
+// ************** Instrumentation ***************
+
+// GCC does not support; see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=78204
+#if (CRYPTOPP_LLVM_CLANG_VERSION >= 30700) || (CRYPTOPP_APPLE_CLANG_VERSION >= 70000)
+# define CRYPTOPP_NO_SANITIZE(x) __attribute__((no_sanitize(x)))
+#else
+# define CRYPTOPP_NO_SANITIZE(x)
 #endif
 
 // ***************** C++11 related ********************

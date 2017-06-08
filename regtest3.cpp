@@ -22,8 +22,12 @@
 #include "sha.h"
 
 // Aggressive stack checking with VS2005 SP1 and above.
-#if (CRYPTOPP_MSC_VERSION >= 1410)
+#if (_MSC_FULL_VER >= 140050727)
 # pragma strict_gs_check (on)
+#endif
+
+#if CRYPTOPP_MSC_VERSION
+# pragma warning(disable: 4505 4355)
 #endif
 
 USING_NAMESPACE(CryptoPP)

@@ -3048,7 +3048,7 @@ Integer::Integer(const byte *encodedInteger, size_t byteCount, Signedness s, Byt
 	if (o == LITTLE_ENDIAN_ORDER)
 	{
 		SecByteBlock block(byteCount);
-#if (CRYPTOPP_MSC_VERSION >= 1410)
+#if (_MSC_FULL_VER >= 140050727)
 		std::reverse_copy(encodedInteger, encodedInteger+byteCount,
 			stdext::make_checked_array_iterator(block.begin(), block.size()));
 #else
@@ -3404,7 +3404,7 @@ void Integer::Decode(BufferedTransformation &bt, size_t inputLen, Signedness s)
 	reg.CleanNew(RoundupSize(BytesToWords(inputLen)));
 	for (size_t i=inputLen; i > 0; i--)
 	{
-		bt.Get(b);
+		(void)bt.Get(b);
 		reg[(i-1)/WORD_SIZE] |= word(b) << ((i-1)%WORD_SIZE)*8;
 	}
 

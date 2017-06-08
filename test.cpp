@@ -25,7 +25,6 @@
 #include "stdcpp.h"
 #include "ossig.h"
 #include "trap.h"
-#include "aria.h"
 
 #include "validate.h"
 #include "bench.h"
@@ -63,7 +62,7 @@
 #endif
 
 // Aggressive stack checking with VS2005 SP1 and above.
-#if (CRYPTOPP_MSC_VERSION >= 1410)
+#if (_MSC_FULL_VER >= 140050727)
 # pragma strict_gs_check (on)
 #endif
 
@@ -118,43 +117,6 @@ int (*AdhocTest)(int argc, char *argv[]) = NULLPTR;
 NAMESPACE_BEGIN(CryptoPP)
 NAMESPACE_BEGIN(Test)
 
-// Coverity finding
-template <class T, bool NON_NEGATIVE>
-T StringToValue(const std::string& str)
-{
-	std::istringstream iss(str);
-
-	// Arbitrary, but we need to clear a Coverity finding TAINTED_SCALAR
-	if (iss.str().length() > 25)
-		throw InvalidArgument(str + "' is too long");
-
-	T value;
-	iss >> std::noskipws >> value;
-
-	// Use fail(), not bad()
-	if (iss.fail() || !iss.eof())
-		throw InvalidArgument(str + "' is not a value");
-
-	if (NON_NEGATIVE && value < 0)
-		throw InvalidArgument(str + "' is negative");
-
-	return value;
-}
-
-// Coverity finding
-template<>
-int StringToValue<int, true>(const std::string& str)
-{
-	Integer n(str.c_str());
-	long l = n.ConvertToLong();
-
-	int r;
-	if (!SafeConvert(l, r))
-		throw InvalidArgument(str + "' is not an integer value");
-
-	return r;
-}
-
 ANONYMOUS_NAMESPACE_BEGIN
 OFB_Mode<AES>::Encryption s_globalRNG;
 NAMESPACE_END
@@ -179,10 +141,6 @@ int CRYPTOPP_API main(int argc, char *argv[])
 	int tempflag = _CrtSetDbgFlag( _CRTDBG_REPORT_FLAG );
 	tempflag |= _CRTDBG_LEAK_CHECK_DF;
 	_CrtSetDbgFlag( tempflag );
-#endif
-
-#if defined(__MWERKS__) && defined(macintosh)
-	argc = ccommand(&argv);
 #endif
 
 	try
@@ -404,14 +362,8 @@ int CRYPTOPP_API main(int argc, char *argv[])
 			InformationRecoverFile(argc-3, argv[2], argv+3);
 		else if (command == "v" || command == "vv")
 			return !Validate(argc>2 ? Test::StringToValue<int, true>(argv[2]) : 0, argv[1][1] == 'v', argc>3 ? argv[3] : NULLPTR);
-		else if (command == "b")  // All benchmarks
-			Test::Benchmark(Test::All, argc<3 ? 1 : Test::StringToValue<float, true>(argv[2]), argc<4 ? 0.0f : Test::StringToValue<float, true>(argv[3])*1e9);
-		else if (command == "b3")  // Public key algorithms
-			Test::Benchmark(Test::PublicKey, argc<3 ? 1 : Test::StringToValue<float, true>(argv[2]), argc<4 ? 0.0f : Test::StringToValue<float, true>(argv[3])*1e9);
-		else if (command == "b2")  // Shared key algorithms
-			Test::Benchmark(Test::SharedKey, argc<3 ? 1 : Test::StringToValue<float, true>(argv[2]), argc<4 ? 0.0f : Test::StringToValue<float, true>(argv[3])*1e9);
-		else if (command == "b1")  // Unkeyed algorithms
-			Test::Benchmark(Test::Unkeyed, argc<3 ? 1 : Test::StringToValue<float, true>(argv[2]), argc<4 ? 0.0f : Test::StringToValue<float, true>(argv[3])*1e9);
+		else if (command.substr(0,1) == "b") // "b", "b1", "b2", ...
+			Test::BenchmarkWithCommand(argc, argv);
 		else if (command == "z")
 			GzipFile(argv[3], argv[4], argv[2][0]-'0');
 		else if (command == "u")
@@ -462,7 +414,7 @@ int CRYPTOPP_API main(int argc, char *argv[])
 		std::cout << "\nstd::exception caught: " << e.what() << std::endl;
 		return -2;
 	}
-} // End main()
+} // main()
 
 void FIPS140_GenerateRandomFiles()
 {
@@ -543,14 +495,14 @@ std::string RSADecryptString(const char *privFilename, const char *ciphertext)
 void RSASignFile(const char *privFilename, const char *messageFilename, const char *signatureFilename)
 {
 	FileSource privFile(privFilename, true, new HexDecoder);
-	RSASS<PKCS1v15, SHA>::Signer priv(privFile);
+	RSASS<PKCS1v15, SHA1>::Signer priv(privFile);
 	FileSource f(messageFilename, true, new SignerFilter(Test::GlobalRNG(), priv, new HexEncoder(new FileSink(signatureFilename))));
 }
 
 bool RSAVerifyFile(const char *pubFilename, const char *messageFilename, const char *signatureFilename)
 {
 	FileSource pubFile(pubFilename, true, new HexDecoder);
-	RSASS<PKCS1v15, SHA>::Verifier pub(pubFile);
+	RSASS<PKCS1v15, SHA1>::Verifier pub(pubFile);
 
 	FileSource signatureFile(signatureFilename, true, new HexDecoder);
 	if (signatureFile.MaxRetrievable() != pub.SignatureLength())
@@ -994,7 +946,7 @@ bool Validate(int alg, bool thorough, const char *seedInput)
 	case 78: result = Test::ValidateHashDRBG(); break;
 	case 79: result = Test::ValidateHmacDRBG(); break;
 
-#if defined(CRYPTOPP_DEBUG) && !defined(CRYPTOPP_IMPORTS)
+#if defined(CRYPTOPP_EXTENDED_VALIDATION)
 	// http://github.com/weidai11/cryptopp/issues/92
 	case 9999: result = Test::TestSecBlock(); break;
 	// http://github.com/weidai11/cryptopp/issues/64

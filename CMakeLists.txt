@@ -45,6 +45,7 @@ endif()
 
 option(DISABLE_ASM "Disable ASM" OFF)
 option(DISABLE_SSSE3 "Disable SSSE3" OFF)
+option(DISABLE_SSE4 "Disable SSE4" OFF)
 option(DISABLE_AESNI "Disable AES-NI" OFF)
 option(DISABLE_SHA "Disable SHA" OFF)
 option(DISABLE_NATIVE_ARCH "Disable the addition of -march=native" OFF)
@@ -90,8 +91,7 @@ if(IS_BIG_ENDIAN)
 	add_definitions(-DIS_BIG_ENDIAN)
 endif()
 
-# No DISABLE_NATIVE_ARCH with DISABLE_ASM for now
-#  See http://github.com/weidai11/cryptopp/issues/395
+# Also see http://github.com/weidai11/cryptopp/issues/395
 if(DISABLE_ASM)
 	add_definitions(-DCRYPTOPP_DISABLE_ASM)
 endif()
@@ -151,6 +151,15 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 				set(DISABLE_NATIVE_ARCH 1)
 			endif()
 
+			# OpenBSD and CentOS 5 needed this one due to ARIA and BLAKE2
+			execute_process(COMMAND echo ${GAS_STRING}
+				COMMAND ${GREP_CMD} "GNU assembler version (2\\.1[8-9]|2\\.[2-9]|[3-9])"
+				OUTPUT_VARIABLE GAS218_OR_LATER)
+			if (GAS218_OR_LATER EQUAL 0)
+				add_definitions(-DCRYPTOPP_DISABLE_SSE4)
+				set(DISABLE_NATIVE_ARCH 1)
+			endif()
+
 			execute_process(COMMAND echo ${GAS_STRING}
 				COMMAND ${GREP_CMD} "GNU assembler version (2\\.19|2\\.[2-9]|[3-9])"
 				OUTPUT_VARIABLE GAS219_OR_LATER)
@@ -159,6 +168,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
 				set(DISABLE_NATIVE_ARCH 1)
 			endif()
 
+			# Ubuntu 10 and Ubuntu 12 needed this one
 			execute_process(COMMAND echo ${GAS_STRING}
 				COMMAND ${GREP_CMD} "GNU assembler version (2\\.2[3-9]|2\\.[3-9]|[3-9])"
 				OUTPUT_VARIABLE GAS223_OR_LATER)
@@ -251,9 +261,12 @@ if ((NOT CRYPTOPP_CROSS_COMPILE) AND "${UNAME_SYSTEM}" STREQUAL "SunOS")
 		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -template=no%extdef")
 	endif()
 
-	# Try this if you are encountering unexplained SIGBUS'es on SPARC
-	# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -xmemalign=4i")
-
+	execute_process(COMMAND "uname" "-p" OUTPUT_VARIABLE PLATFORM_SUNOS_ARCH OUTPUT_STRIP_TRAILING_WHITESPACE)
+	string(TOUPPER "${PLATFORM_SUNOS_ARCH}" PLATFORM_SUNOS_ARCH)
+	message(STATUS "SunOS platform arch: ${PLATFORM_SUNOS_ARCH}")
+	if (${PLATFORM_SUNOS_ARCH} MATCHES SPARC)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -xmemalign=4i")
+	endif ()
 endif()
 
 # Link is driven through the compiler, but CXXFLAGS are not used. Also see
@@ -273,7 +286,9 @@ file(GLOB cryptopp_HEADERS *.h)
 file(GLOB cryptopp_SOURCES_TEST test.cpp bench1.cpp bench2.cpp validat0.cpp validat1.cpp validat2.cpp validat3.cpp adhoc.cpp datatest.cpp regtest1.cpp regtest2.cpp regtest3.cpp fipsalgt.cpp dlltest.cpp fipstest.cpp)
 
 # Library sources. You can use the GNUmakefile to generate the list: `make sources`.
+# Makefile sorted them at http://github.com/weidai11/cryptopp/pull/426.
 file(GLOB cryptopp_SOURCES *.cpp)
+list(SORT cryptopp_SOURCES)
 list(REMOVE_ITEM cryptopp_SOURCES
 		${CMAKE_CURRENT_SOURCE_DIR}/cryptlib.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/cpu.cpp

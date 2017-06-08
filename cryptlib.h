@@ -99,7 +99,7 @@ and getting us started on the manual.
 
 #if CRYPTOPP_MSC_VERSION
 # pragma warning(push)
-# pragma warning(disable: 4127 4189 4702)
+# pragma warning(disable: 4127 4189 4505 4702)
 #endif
 
 NAMESPACE_BEGIN(CryptoPP)
@@ -716,7 +716,7 @@ protected:
 
 	//! \brief Validates the IV length
 	//! \param length the size of an IV, in bytes
-	//! \throws InvalidArgument if the number of rounds are invalid
+	//! \throws InvalidArgument if the IV length is invalid
 	size_t ThrowIfInvalidIVLength(int length);
 
 	//! \brief Retrieves and validates the IV
@@ -1094,8 +1094,6 @@ protected:
 	void ThrowIfInvalidTruncatedSize(size_t size) const;
 };
 
-typedef HashTransformation HashFunction;
-
 //! \brief Interface for one direction (encryption or decryption) of a block cipher
 //! \details These objects usually should not be used directly. See BlockTransformation for more details.
 class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE BlockCipher : public SimpleKeyingInterface, public BlockTransformation
@@ -1267,7 +1265,7 @@ public:
 	{
 		// TODO: What happens if there are more than 2^32 elements?
 		for (; begin != end; ++begin)
-			std::iter_swap(begin, begin + GenerateWord32(0, end-begin-1));
+			std::iter_swap(begin, begin + GenerateWord32(0, static_cast<word32>(end-begin-1)));
 	}
 };
 

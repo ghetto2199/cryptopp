@@ -16,6 +16,14 @@
 #include "cpu.h"
 #include "drbg.h"
 
+#if CRYPTOPP_MSC_VERSION
+# pragma warning(disable: 4355)
+#endif
+
+#if CRYPTOPP_MSC_VERSION
+# pragma warning(disable: 4505 4355)
+#endif
+
 NAMESPACE_BEGIN(CryptoPP)
 NAMESPACE_BEGIN(Test)
 
@@ -235,7 +243,7 @@ void BenchMark(const char *name, NIST_DRBG &rng, double timeTotal)
 	Test::GlobalRNG().GenerateBlock(buf, BUF_SIZE);
 	buf.SetMark(16);
 
-	rng.IncorporateEntropy(buf, rng.GetMinEntropy());
+	rng.IncorporateEntropy(buf, rng.MinEntropyLength());
 	unsigned long long blocks = 1;
 	double timeTaken;
 
@@ -271,7 +279,6 @@ void BenchMarkKeying(SimpleKeyingInterface &c, size_t keyLength, const NameValue
 template <class T_FactoryOutput, class T_Interface>
 void BenchMarkByName2(const char *factoryName, size_t keyLength = 0, const char *displayName=NULLPTR, const NameValuePairs &params = g_nullNameValuePairs)
 {
-	CRYPTOPP_UNUSED(params);
 	std::string name(factoryName ? factoryName : "");
 	member_ptr<T_FactoryOutput> obj(ObjectFactoryRegistry<T_FactoryOutput>::Registry().CreateObject(name.c_str()));
 
@@ -283,9 +290,10 @@ void BenchMarkByName2(const char *factoryName, size_t keyLength = 0, const char 
 	else if (keyLength)
 		name += " (" + IntToString(keyLength * 8) + "-bit key)";
 
-	obj->SetKey(defaultKey, keyLength, CombinedNameValuePairs(params, MakeParameters(Name::IV(), ConstByteArrayParameter(defaultKey, obj->IVSize()), false)));
+	const int blockSize = params.GetIntValueWithDefault(Name::BlockSize(), 0);
+	obj->SetKey(defaultKey, keyLength, CombinedNameValuePairs(params, MakeParameters(Name::IV(), ConstByteArrayParameter(defaultKey, blockSize ? blockSize : obj->IVSize()), false)));
 	BenchMark(name.c_str(), *static_cast<T_Interface *>(obj.get()), g_allocatedTime);
-	BenchMarkKeying(*obj, keyLength, CombinedNameValuePairs(params, MakeParameters(Name::IV(), ConstByteArrayParameter(defaultKey, obj->IVSize()), false)));
+	BenchMarkKeying(*obj, keyLength, CombinedNameValuePairs(params, MakeParameters(Name::IV(), ConstByteArrayParameter(defaultKey, blockSize ? blockSize : obj->IVSize()), false)));
 }
 
 template <class T_FactoryOutput>
@@ -339,6 +347,23 @@ void AddHtmlFooter()
 	std::cout << "\n</HTML>" << std::endl;
 }
 
+void BenchmarkWithCommand(int argc, const char* const argv[])
+{
+	std::string command(argv[1]);
+	float runningTime(argc >= 3 ? Test::StringToValue<float, true>(argv[2]) : 1.0f);
+	float cpuFreq(argc >= 4 ? Test::StringToValue<float, true>(argv[3])*float(1e9) : 0.0f);
+	std::string algoName(argc >= 5 ? argv[4] : "");
+
+	if (command == "b")  // All benchmarks
+		Benchmark(Test::All, runningTime, cpuFreq);
+	else if (command == "b3")  // Public key algorithms
+		Test::Benchmark(Test::PublicKey, runningTime, cpuFreq);
+	else if (command == "b2")  // Shared key algorithms
+		Test::Benchmark(Test::SharedKey, runningTime, cpuFreq);
+	else if (command == "b1")  // Unkeyed algorithms
+		Test::Benchmark(Test::Unkeyed, runningTime, cpuFreq);
+}
+
 void Benchmark(Test::TestClass suites, double t, double hertz)
 {
 	g_allocatedTime = t;
@@ -348,7 +373,7 @@ void Benchmark(Test::TestClass suites, double t, double hertz)
 
 	g_testBegin = std::time(NULLPTR);
 
-	if (static_cast<int>(suites) > 7 || static_cast<int>(suites) == 0)
+	if (static_cast<int>(suites) > 256 || static_cast<int>(suites) == 0)
 		suites = Test::All;
 
 	// Unkeyed algorithms
@@ -358,8 +383,22 @@ void Benchmark(Test::TestClass suites, double t, double hertz)
 		Benchmark1(t, hertz);
 	}
 
-	// Shared key algorithms
-	if (suites & Test::SharedKey)
+	// Shared key algorithms (MACs)
+	if (suites & Test::SharedKeyMAC)
+	{
+		std::cout << "\n<BR>";
+		Benchmark2(t, hertz);
+	}
+
+	// Shared key algorithms (stream ciphers)
+	if (suites & Test::SharedKeyStream)
+	{
+		std::cout << "\n<BR>";
+		Benchmark2(t, hertz);
+	}
+
+	// Shared key algorithms (block ciphers)
+	if (suites & Test::SharedKeyBlock)
 	{
 		std::cout << "\n<BR>";
 		Benchmark2(t, hertz);
@@ -399,6 +438,7 @@ void Benchmark1(double t, double hertz)
 		cpb = "";
 
 	std::cout << "\n<TABLE>";
+
 	std::cout << "\n<COLGROUP><COL style=\"text-align: left;\"><COL style=\"text-align: right;\">";
 	std::cout << "<COL style=\"text-align: right;\">";
 	std::cout << "\n<THEAD style=\"background: #F0F0F0\"><TR><TH>Algorithm<TH>MiB/Second" << cpb;
@@ -539,9 +579,9 @@ void Benchmark2(double t, double hertz)
 		BenchMarkByName<SymmetricCipher>("Camellia/CTR", 16);
 		BenchMarkByName<SymmetricCipher>("Camellia/CTR", 32);
 		BenchMarkByName<SymmetricCipher>("Twofish/CTR");
-//		BenchMarkByName<SymmetricCipher>("Threefish256/CTR");
-//		BenchMarkByName<SymmetricCipher>("Threefish512/CTR");
-//		BenchMarkByName<SymmetricCipher>("Threefish1024/CTR");
+		BenchMarkByName<SymmetricCipher>("Threefish/CTR", 32, "Threefish/CTR (256-bit key)", MakeParameters(Name::BlockSize(), 32));
+		BenchMarkByName<SymmetricCipher>("Threefish/CTR", 64, "Threefish/CTR (512-bit key)", MakeParameters(Name::BlockSize(), 64));
+		BenchMarkByName<SymmetricCipher>("Threefish/CTR", 128, "Threefish/CTR (1024-bit key)", MakeParameters(Name::BlockSize(), 128));
 		BenchMarkByName<SymmetricCipher>("Serpent/CTR");
 		BenchMarkByName<SymmetricCipher>("CAST-256/CTR");
 		BenchMarkByName<SymmetricCipher>("RC6/CTR");
@@ -559,6 +599,11 @@ void Benchmark2(double t, double hertz)
 		BenchMarkByName<SymmetricCipher>("CAST-128/CTR");
 		BenchMarkByName<SymmetricCipher>("SKIPJACK/CTR");
 		BenchMarkByName<SymmetricCipher>("SEED/CTR", 0, "SEED/CTR (1/2 K table)");
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 16, "Kalyna-128(128) (128-bit key)", MakeParameters(Name::BlockSize(), 16));
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 32, "Kalyna-128(256) (256-bit key)", MakeParameters(Name::BlockSize(), 16));
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 32, "Kalyna-256(256) (256-bit key)", MakeParameters(Name::BlockSize(), 32));
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 64, "Kalyna-256(512) (512-bit key)", MakeParameters(Name::BlockSize(), 32));
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 64, "Kalyna-512(512) (512-bit key)", MakeParameters(Name::BlockSize(), 64));
 	}
 
 	std::cout << "\n<TBODY style=\"background: yellow;\">";

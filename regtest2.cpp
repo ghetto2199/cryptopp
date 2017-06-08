@@ -30,6 +30,8 @@
 #include "cast.h"
 #include "rc6.h"
 #include "mars.h"
+#include "kalyna.h"
+#include "threefish.h"
 #include "des.h"
 #include "idea.h"
 #include "rc5.h"
@@ -40,7 +42,6 @@
 #include "blowfish.h"
 #include "seed.h"
 #include "wake.h"
-#include "seal.h"
 #include "hkdf.h"
 
 // For HMAC's
@@ -56,8 +57,12 @@
 #include "panama.h"
 
 // Aggressive stack checking with VS2005 SP1 and above.
-#if (CRYPTOPP_MSC_VERSION >= 1410)
+#if (_MSC_FULL_VER >= 140050727)
 # pragma strict_gs_check (on)
+#endif
+
+#if CRYPTOPP_MSC_VERSION
+# pragma warning(disable: 4505 4355)
 #endif
 
 USING_NAMESPACE(CryptoPP)
@@ -134,6 +139,12 @@ void RegisterFactories2()
 	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Blowfish> >();
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SEED> >();
 	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SEED> >();
+	RegisterSymmetricCipherDefaultFactories<ECB_Mode<Kalyna> >();  // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CBC_Mode<Kalyna> >();  // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Kalyna> >();  // Benchmarks
+	RegisterSymmetricCipherDefaultFactories<ECB_Mode<Threefish> >();  // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CBC_Mode<Threefish> >();  // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Threefish> >();  // Benchmarks
 
 	RegisterDefaultFactoryFor<KeyDerivationFunction, HKDF<SHA1> >();
 	RegisterDefaultFactoryFor<KeyDerivationFunction, HKDF<SHA256> >();

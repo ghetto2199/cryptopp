@@ -88,8 +88,12 @@ IS_FREEBSD=$(echo -n "$THIS_SYSTEM" | "$GREP" -i -c freebsd)
 IS_NETBSD=$(echo -n "$THIS_SYSTEM" | "$GREP" -i -c netbsd)
 IS_SOLARIS=$(echo -n "$THIS_SYSTEM" | "$GREP" -i -c sunos)
 
+IS_DEBIAN=$(lsb_release -a 2>&1 | "$GREP" -i -c debian)
+IS_FEDORA=$(lsb_release -a 2>&1 | "$GREP" -i -c fedora)
+IS_UBUNTU=$(lsb_release -a 2>&1 | "$GREP" -i -c ubuntu)
+
 THIS_MACHINE=$(uname -m 2>&1)
-IS_X86=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "(i386|i486|i586|i686)")
+IS_X86=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "(i386|i486|i686|i686)")
 IS_X64=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "(amd64|x86_64)")
 IS_PPC=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "(Power|PPC)")
 IS_ARM32=$(echo -n "$THIS_MACHINE" | "$GREP" -v "64" | "$EGREP" -i -c "(arm|aarch32)")
@@ -581,6 +585,16 @@ if [[ (-z "$HAVE_X32") ]]; then
 	fi
 fi
 
+# Hit or miss, mostly hit
+if [[ (-z "$HAVE_NATIVE_ARCH") ]]; then
+	HAVE_NATIVE_ARCH=0
+	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -march=native adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	if [[ ("$?" -eq "0") ]]; then
+		HAVE_NATIVE_ARCH=1
+	fi
+fi
+
 # ld-gold linker testing
 if [[ (-z "$HAVE_LDGOLD") ]]; then
 	HAVE_LDGOLD=0
@@ -809,8 +823,8 @@ CPU_COUNT=1
 MEM_SIZE=512
 
 if [[ (-e "/proc/cpuinfo") && (-e "/proc/meminfo") ]]; then
-	CPU_COUNT=$(cat /proc/cpuinfo | "$GREP" -c '^processor')
-	MEM_SIZE=$(cat /proc/meminfo | "$GREP" "MemTotal" | "$AWK" '{print $2}')
+	CPU_COUNT=$(cat /proc/cpuinfo 2>&1 | "$GREP" -c '^processor')
+	MEM_SIZE=$(cat /proc/meminfo 2>&1 | "$GREP" "MemTotal" | "$AWK" '{print $2}')
 	MEM_SIZE=$(($MEM_SIZE/1024))
 elif [[ "$IS_DARWIN" -ne "0" ]]; then
 	CPU_COUNT=$(sysctl -a 2>&1 | "$GREP" 'hw.availcpu' | "$AWK" '{print $3; exit}')
@@ -827,7 +841,7 @@ if [[ (-e "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq") ]]; then
 	CPU_FREQ=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)
 	CPU_FREQ=$("$AWK" "BEGIN {print $CPU_FREQ/1024/1024}")
 elif [[ (-e "/proc/cpuinfo") ]]; then
-	CPU_FREQ=$(cat /proc/cpuinfo | "$GREP" 'MHz' | "$AWK" '{print $4; exit}')
+	CPU_FREQ=$(cat /proc/cpuinfo 2>&1 | "$GREP" 'MHz' | "$AWK" '{print $4; exit}')
 	if [[ -z "$CPU_FREQ" ]]; then CPU_FREQ=512; fi
 	CPU_FREQ=$("$AWK" "BEGIN {print $CPU_FREQ/1024}")
 elif [[ "$IS_DARWIN" -ne "0" ]]; then
@@ -843,7 +857,7 @@ fi
 HAVE_SWAP=1
 if [[ "$IS_LINUX" -ne "0" ]]; then
 	if [[ (-e "/proc/meminfo") ]]; then
-		SWAP_SIZE=$(cat /proc/meminfo | "$GREP" "SwapTotal" | "$AWK" '{print $2}')
+		SWAP_SIZE=$(cat /proc/meminfo 2>&1 | "$GREP" "SwapTotal" | "$AWK" '{print $2}')
 		if [[ "$SWAP_SIZE" -eq "0" ]]; then
 			HAVE_SWAP=0
 		fi
@@ -1153,7 +1167,7 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo
 
 		OBJFILE=sha.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
 
@@ -1175,9 +1189,6 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 
 		if [[ ("$X86_SSE2" -ne "0" && "$X86_SHA256_HASH_BLOCKS" -eq "0") ]]; then
 			echo "ERROR: failed to use X86_SHA256_HashBlocks" | tee -a "$TEST_RESULTS"
-			if [[ ("$CLANG_COMPILER" -ne "0") ]]; then
-				echo "This could be due to Clang and lack of expected support for Intel assembly syntax in some versions of the compiler"
-			fi
 		fi
 
 		if [[ ("$FAILED" -eq "0" && "$X86_SHA256_HASH_BLOCKS" -ne "0") ]]; then
@@ -1202,7 +1213,7 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo
 
 		OBJFILE=rijndael.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1246,10 +1257,6 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 
 		if [[ ("$FAILED" -eq "0") ]]; then
 			echo "Verified aesenc, aesenclast, aesdec, aesdeclast, aesimc, aeskeygenassist machine instructions" | tee -a "$TEST_RESULTS"
-		else
-			if [[ ("$CLANG_COMPILER" -ne "0" && "$CLANG_37_OR_ABOVE" -eq "0") ]]; then
-				echo "This could be due to Clang and lack of expected support for SSSE3 (and above) in some versions of the compiler. If so, try Clang 3.7 or above"
-			fi
 		fi
 	fi
 
@@ -1268,19 +1275,19 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo
 
 		OBJFILE=gcm.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
 		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
 
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c '(pclmullqhq|vpclmulqdq)')
+		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c '(pclmulqdq|pclmullqhq|vpclmulqdq)')
 		if [[ ("$COUNT" -eq "0") ]]; then
 			FAILED=1
 			echo "ERROR: failed to generate pclmullqhq instruction" | tee -a "$TEST_RESULTS"
 		fi
 
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c '(pclmullqlq|vpclmulqdq)')
+		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c '(pclmulqdq|pclmullqlq|vpclmulqdq)')
 		if [[ ("$COUNT" -eq "0") ]]; then
 			FAILED=1
 			echo "ERROR: failed to generate pclmullqlq instruction" | tee -a "$TEST_RESULTS"
@@ -1288,10 +1295,6 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 
 		if [[ ("$FAILED" -eq "0") ]]; then
 			echo "Verified pclmullqhq and pclmullqlq machine instructions" | tee -a "$TEST_RESULTS"
-		else
-			if [[ ("$CLANG_COMPILER" -ne "0" && "$CLANG_37_OR_ABOVE" -eq "0") ]]; then
-				echo "This could be due to Clang and lack of expected support for SSSE3 (and above) in some versions of the compiler. If so, try Clang 3.7 or above"
-			fi
 		fi
 	fi
 
@@ -1314,7 +1317,7 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo
 
 		OBJFILE=rdrand.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1338,10 +1341,6 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 
 		if [[ ("$FAILED" -eq "0") ]]; then
 			echo "Verified rdrand and rdseed machine instructions" | tee -a "$TEST_RESULTS"
-		else
-			if [[ ("$CLANG_COMPILER" -ne "0" && "$CLANG_37_OR_ABOVE" -eq "0") ]]; then
-				echo "This could be due to Clang and lack of expected support for SSSE3 (and above) in some versions of the compiler. If so, try Clang 3.7 or above"
-			fi
 		fi
 	fi
 
@@ -1360,7 +1359,7 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo
 
 		OBJFILE=crc.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1380,10 +1379,6 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 
 		if [[ ("$FAILED" -eq "0") ]]; then
 			echo "Verified crc32l and crc32b machine instructions" | tee -a "$TEST_RESULTS"
-		else
-			if [[ ("$CLANG_COMPILER" -ne "0" && "$CLANG_37_OR_ABOVE" -eq "0") ]]; then
-				echo "This could be due to Clang and lack of expected support for SSSE3 (and above) in some versions of the compiler. If so, try Clang 3.7 or above"
-			fi
 		fi
 	fi
 
@@ -1402,7 +1397,7 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo
 
 		OBJFILE=sha.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1452,10 +1447,6 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 
 		if [[ ("$FAILED" -eq "0") ]]; then
 			echo "Verified sha1rnds4, sha1nexte, sha1msg1, sha1msg2, sha256rnds2, sha256msg1 and sha256msg2 machine instructions" | tee -a "$TEST_RESULTS"
-		else
-			if [[ ("$CLANG_COMPILER" -ne "0" && "$CLANG_37_OR_ABOVE" -eq "0") ]]; then
-				echo "This could be due to Clang and lack of expected support for SSSE3 (and above) in some versions of the compiler. If so, try Clang 3.7 or above"
-			fi
 		fi
 	fi
 fi
@@ -1474,46 +1465,50 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_ARM32" -ne "0" || "$IS_ARM64" -ne "0")) ]
 		echo "Testing: ARM NEON code generation" | tee -a "$TEST_RESULTS"
 		echo
 
-		OBJFILE=blake2.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS ${PLATFORM_CXXFLAGS[@]}" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		OBJFILE=aria.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
 		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
 
-		# BLAKE2_NEON_Compress32: 30 each vld1q_u8 and vld1q_u64
-		# BLAKE2_NEON_Compress64: 22 each vld1q_u8 and vld1q_u64
-		COUNT1=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'ldr.*q|vld.*128')
-		COUNT2=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'ldp.*q')
-		COUNT=$(($COUNT1 + $(($COUNT2 + $COUNT2))))
-		if [[ ("$COUNT" -lt "25") ]]; then
+		# ARIA::UncheckedKeySet: 8 vld1q.32
+		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'vld')
+		if [[ ("$COUNT" -lt "8") ]]; then
 			FAILED=1
 			echo "ERROR: failed to generate expected vector load instructions" | tee -a "$TEST_RESULTS"
 		fi
 
-		# BLAKE2_NEON_Compress{32|64}: 6 each vst1q_u32 and vst1q_u64
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'str.*q|vstr')
-		if [[ ("$COUNT" -lt "6") ]]; then
+		# ARIA::UncheckedKeySet: 24 vstr1q.32
+		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'vst')
+		if [[ ("$COUNT" -lt "24") ]]; then
 			FAILED=1
 			echo "ERROR: failed to generate expected vector store instructions" | tee -a "$TEST_RESULTS"
 		fi
 
-		# BLAKE2_NEON_Compress{32|64}: 409 each vaddq_u32 and vaddq_u64
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'add.*v|vadd')
-		if [[ ("$COUNT" -lt "400") ]]; then
+		# ARIA::UncheckedKeySet: 17 vshl.32
+		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'vshl')
+		if [[ ("$COUNT" -lt "17") ]]; then
 			FAILED=1
-			echo "ERROR: failed to generate expected vector add instructions" | tee -a "$TEST_RESULTS"
+			echo "ERROR: failed to generate expected vector shift left instructions" | tee -a "$TEST_RESULTS"
 		fi
 
-		# BLAKE2_NEON_Compress{32|64}: 559 each veorq_u32 and veorq_u64
+		# ARIA::UncheckedKeySet: 17 vshr.32
+		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'vshl')
+		if [[ ("$COUNT" -lt "17") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate expected vector shift right instructions" | tee -a "$TEST_RESULTS"
+		fi
+
+		# ARIA::UncheckedKeySet: 34 veor
 		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'eor.*v|veor')
-		if [[ ("$COUNT" -lt "550") ]]; then
+		if [[ ("$COUNT" -lt "34") ]]; then
 			FAILED=1
 			echo "ERROR: failed to generate expected vector xor instructions" | tee -a "$TEST_RESULTS"
 		fi
 
 		if [[ ("$FAILED" -eq "0") ]]; then
-			echo "Verified vector load, store, add, xor machine instructions" | tee -a "$TEST_RESULTS"
+			echo "Verified vector load, store, shfit left, shift right, xor machine instructions" | tee -a "$TEST_RESULTS"
 		fi
 	fi
 
@@ -1528,7 +1523,7 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_ARM32" -ne "0" || "$IS_ARM64" -ne "0")) ]
 		echo
 
 		OBJFILE=gcm.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS ${PLATFORM_CXXFLAGS[@]}" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1713,22 +1708,103 @@ if [[ ("${#PLATFORM_CXXFLAGS[@]}" -ne "0") ]]; then
 fi
 
 ############################################
+# Debian specific.
+if [[ ("$IS_DEBIAN" -ne "0" || "$IS_UBUNTU" -ne "0") ]]; then
+
+	# Flags taken from Debian's build logs
+	# https://buildd.debian.org/status/fetch.php?pkg=libcrypto%2b%2b&arch=i386&ver=5.6.4-6
+	# https://buildd.debian.org/status/fetch.php?pkg=libcrypto%2b%2b&arch=kfreebsd-amd64&ver=5.6.4-6&stamp=1482663138
+
+	DEBIAN_FLAGS=("-DHAVE_CONFIG_H" "-I." "-Wdate-time" "-D_FORTIFY_SOURCE=2" "-g" "-O2"
+	"-fstack-protector-strong" "-Wformat -Werror=format-security" "-DCRYPTOPP_INIT_PRIORITY=250"
+	"-DCRYPTOPP_NO_UNALIGNED_DATA_ACCESS" "-DNDEBUG" "-fPIC" "-DPIC")
+
+	echo
+	echo "************************************" | tee -a "$TEST_RESULTS"
+	echo "Testing: Debian standard build" | tee -a "$TEST_RESULTS"
+	echo
+
+	"$MAKE" clean > /dev/null 2>&1
+	rm -f adhoc.cpp > /dev/null 2>&1
+
+	CXX="g++" "$MAKE" "${MAKEARGS[@]}" CXXFLAGS="${DEBIAN_FLAGS[*]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
+
+	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
+	else
+		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
+		fi
+		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+fi
+
+############################################
+# Fedora specific.
+if [[ ("$IS_FEDORA" -ne "0") ]]; then
+
+	# Flags taken from Fedora's build logs
+	# https://kojipkgs.fedoraproject.org//packages/cryptopp/5.6.3/8.fc27/data/logs/i686/build.log
+	# https://kojipkgs.fedoraproject.org//packages/cryptopp/5.6.3/8.fc27/data/logs/x86_64/build.log
+	if [[ ("$IS_X86" -ne "0") ]]; then
+		MARCH_OPT=(-m32 -march=i686)
+	elif [[ ("$IS_X64" -ne "0") ]]; then
+		MARCH_OPT=(-m64 -mtune=generic)
+	fi
+
+	FEDORA_FLAGS=("-DHAVE_CONFIG_H" "-I." "-O2" "-g" "-pipe" "-Wall" "-Werror=format-security" "-fPIC" "-DPIC"
+		"-Wp,-D_FORTIFY_SOURCE=2" "-fexceptions" "-fstack-protector-strong" "--param=ssp-buffer-size=4"
+		"-specs=/usr/lib/rpm/redhat/redhat-hardened-cc1" "${MARCH_OPT[@]}" "-fasynchronous-unwind-tables")
+
+	echo
+	echo "************************************" | tee -a "$TEST_RESULTS"
+	echo "Testing: Fedora standard build" | tee -a "$TEST_RESULTS"
+	echo
+
+	if [[ ! -f /usr/lib/rpm/redhat/redhat-hardened-cc1 ]]; then
+		echo "ERROR: please install redhat-rpm-config package"
+	else
+		"$MAKE" clean > /dev/null 2>&1
+		rm -f adhoc.cpp > /dev/null 2>&1
+
+		CXX="g++" "$MAKE" "${MAKEARGS[@]}" CXXFLAGS="${FEDORA_FLAGS[*]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
+
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
+		else
+			./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
+			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+				echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
+			fi
+			./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
+			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+				echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
+			fi
+		fi
+	fi
+fi
+
+############################################
 # Minimum platform
 if [[ ("$GCC_COMPILER" -ne "0" || "$CLANG_COMPILER" -ne "0" || "$INTEL_COMPILER" -ne "0") ]]; then
 
-	# i586 (lacks MMX, SSE and SSE2)
+	# i686 (lacks MMX, SSE and SSE2)
 	if [[ "$IS_X86" -ne "0" ]]; then
 		############################################
 		# Debug build
 		echo
 		echo "************************************" | tee -a "$TEST_RESULTS"
-		echo "Testing: Debug, i586 minimum arch CXXFLAGS" | tee -a "$TEST_RESULTS"
+		echo "Testing: Debug, i686 minimum arch CXXFLAGS" | tee -a "$TEST_RESULTS"
 		echo
 
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="$DEBUG_CXXFLAGS -march=i586 $OPT_PIC"
+		CXXFLAGS="$DEBUG_CXXFLAGS -march=i686 $OPT_PIC"
 		CXX="$CXX" "$MAKE" "${MAKEARGS[@]}" CXXFLAGS="$CXXFLAGS" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -1748,13 +1824,13 @@ if [[ ("$GCC_COMPILER" -ne "0" || "$CLANG_COMPILER" -ne "0" || "$INTEL_COMPILER"
 		# Release build
 		echo
 		echo "************************************" | tee -a "$TEST_RESULTS"
-		echo "Testing: Release, i586 minimum arch CXXFLAGS" | tee -a "$TEST_RESULTS"
+		echo "Testing: Release, i686 minimum arch CXXFLAGS" | tee -a "$TEST_RESULTS"
 		echo
 
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="$RELEASE_CXXFLAGS -march=i586 $OPT_PIC"
+		CXXFLAGS="$RELEASE_CXXFLAGS -march=i686 $OPT_PIC"
 		CXX="$CXX" "$MAKE" "${MAKEARGS[@]}" CXXFLAGS="$CXXFLAGS" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -1829,9 +1905,9 @@ fi
 
 ############################################
 # Mismatched arch capabilities
-if [[ ("$GCC_COMPILER" -ne "0" || "$CLANG_COMPILER" -ne "0" || "$INTEL_COMPILER" -ne "0") ]]; then
+if [[ ( ("$IS_X86" -ne "0" || "$IS_X32" -ne "0" || "$IS_X64" -ne "0") && "$HAVE_NATIVE_ARCH" -ne "0") ]]; then
 
-	# i586 (lacks MMX, SSE and SSE2)
+	# i686 (lacks MMX, SSE and SSE2)
 	if [[ "$IS_X86" -ne "0" ]]; then
 		############################################
 		# Debug build
@@ -1843,10 +1919,11 @@ if [[ ("$GCC_COMPILER" -ne "0" || "$CLANG_COMPILER" -ne "0" || "$INTEL_COMPILER"
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="$DEBUG_CXXFLAGS -march=i586 $OPT_PIC"
+		CXXFLAGS="$DEBUG_CXXFLAGS -march=i686 $OPT_PIC"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static 2>&1 | tee -a "$TEST_RESULTS"
 
-		CXXFLAGS="$DEBUG_CXXFLAGS -march=native $OPT_PIC"
+		# The makefile may add -DCRYPTOPP_DISABLE_XXX, so we can't add -march=native
+		CXXFLAGS="$DEBUG_CXXFLAGS $OPT_PIC"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -1872,10 +1949,11 @@ if [[ ("$GCC_COMPILER" -ne "0" || "$CLANG_COMPILER" -ne "0" || "$INTEL_COMPILER"
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="$RELEASE_CXXFLAGS -march=i586 $OPT_PIC"
+		CXXFLAGS="$RELEASE_CXXFLAGS -march=i686 $OPT_PIC"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static 2>&1 | tee -a "$TEST_RESULTS"
 
-		CXXFLAGS="$RELEASE_CXXFLAGS -march=native $OPT_PIC"
+		# The makefile may add -DCRYPTOPP_DISABLE_XXX, so we can't add -march=native
+		CXXFLAGS="$RELEASE_CXXFLAGS $OPT_PIC"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -1907,7 +1985,8 @@ if [[ ("$GCC_COMPILER" -ne "0" || "$CLANG_COMPILER" -ne "0" || "$INTEL_COMPILER"
 		CXXFLAGS="$DEBUG_CXXFLAGS -march=x86-64 $OPT_PIC"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static 2>&1 | tee -a "$TEST_RESULTS"
 
-		CXXFLAGS="$DEBUG_CXXFLAGS -march=native $OPT_PIC"
+		# The makefile may add -DCRYPTOPP_DISABLE_XXX, so we can't add -march=native
+		CXXFLAGS="$DEBUG_CXXFLAGS $OPT_PIC"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -1936,7 +2015,8 @@ if [[ ("$GCC_COMPILER" -ne "0" || "$CLANG_COMPILER" -ne "0" || "$INTEL_COMPILER"
 		CXXFLAGS="$RELEASE_CXXFLAGS -march=x86-64 $OPT_PIC"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static 2>&1 | tee -a "$TEST_RESULTS"
 
-		CXXFLAGS="$RELEASE_CXXFLAGS -march=native $OPT_PIC"
+		# The makefile may add -DCRYPTOPP_DISABLE_XXX, so we can't add -march=native
+		CXXFLAGS="$RELEASE_CXXFLAGS $OPT_PIC"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -5480,13 +5560,13 @@ echo | tee -a "$TEST_RESULTS"
 # "Error" is from the GNU assembler
 # "error" is from the sanitizers
 # "Illegal", "Conditional", "0 errors" and "suppressed errors" are from Valgrind.
-ECOUNT=$("$EGREP" '(Error|ERROR|error|FAILED|Illegal|Conditional|CryptoPP::Exception)' $TEST_RESULTS | "$EGREP" -v '( 0 errors|suppressed errors|error detector)' | wc -l | "$AWK" '{print $1}')
+ECOUNT=$("$EGREP" '(Error|ERROR|error|FAILED|Illegal|Conditional|CryptoPP::Exception)' $TEST_RESULTS | "$EGREP" -v '( 0 errors|suppressed errors|error detector|format-security)' | wc -l | "$AWK" '{print $1}')
 if (( "$ECOUNT" == "0" )); then
 	echo "No failures detected" | tee -a "$TEST_RESULTS"
 else
 	echo "$ECOUNT errors detected. See $TEST_RESULTS for details" | tee -a "$TEST_RESULTS"
 	if (( "$ECOUNT" < 16 )); then
-		"$EGREP" -n '(Error|ERROR|error|FAILED|Illegal|Conditional|CryptoPP::Exception)' "$TEST_RESULTS" | "$EGREP" -v '( 0 errors|suppressed errors|error detector)'
+		"$EGREP" -n '(Error|ERROR|error|FAILED|Illegal|Conditional|CryptoPP::Exception)' "$TEST_RESULTS" | "$EGREP" -v '( 0 errors|suppressed errors|error detector|Assertion|format-security)'
 	fi
 fi
 
