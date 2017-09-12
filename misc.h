@@ -109,7 +109,9 @@
 #  define SIZE_MAX __SIZE_MAX__
 # elif defined(SIZE_T_MAX) && (SIZE_T_MAX > 0)
 #  define SIZE_MAX SIZE_T_MAX
-# else
+# elif defined(__SIZE_TYPE__)
+#  define SIZE_MAX (~(__SIZE_TYPE__)0)
+#else
 #  define SIZE_MAX ((std::numeric_limits<size_t>::max)())
 # endif
 #endif
@@ -226,7 +228,7 @@ class CRYPTOPP_NO_VTABLE ThreeBases : public BASE1, public BASE2, public BASE3
 #endif // CRYPTOPP_DOXYGEN_PROCESSING
 
 //! \class ObjectHolder
-//! \tparam the class or type
+//! \tparam T class or type
 //! \brief Uses encapsulation to hide an object in derived classes
 //! \details The object T is declared as protected.
 template <class T>
@@ -1769,15 +1771,11 @@ inline byte ByteReverse(byte value)
 }
 
 //! \brief Reverses bytes in a 16-bit value
-//! \brief Performs an endian reversal
 //! \param value the 16-bit value to reverse
 //! \details ByteReverse calls bswap if available. Otherwise the function performs a 8-bit rotate on the word16
 inline word16 ByteReverse(word16 value)
 {
-#if defined(CRYPTOPP_X86_ASM_AVAILABLE) && defined(CRYPTOPP_MOVBE_AVAILABLE)
-	__asm__ ("movbe %1, %0" : "=m" (value) : "q" (value));
-	return value;
-#elif defined(CRYPTOPP_BYTESWAP_AVAILABLE)
+#if defined(CRYPTOPP_BYTESWAP_AVAILABLE)
 	return bswap_16(value);
 #elif (_MSC_VER >= 1400) || (defined(_MSC_VER) && !defined(_DLL))
 	return _byteswap_ushort(value);
@@ -1787,15 +1785,11 @@ inline word16 ByteReverse(word16 value)
 }
 
 //! \brief Reverses bytes in a 32-bit value
-//! \brief Performs an endian reversal
 //! \param value the 32-bit value to reverse
 //! \details ByteReverse calls bswap if available. Otherwise the function uses a combination of rotates on the word32
 inline word32 ByteReverse(word32 value)
 {
-#if defined(CRYPTOPP_X86_ASM_AVAILABLE) && defined(CRYPTOPP_MOVBE_AVAILABLE)
-	__asm__ ("movbe %1, %0" : "=m" (value) : "q" (value));
-	return value;
-#elif defined(__GNUC__) && defined(CRYPTOPP_X86_ASM_AVAILABLE)
+#if defined(__GNUC__) && defined(CRYPTOPP_X86_ASM_AVAILABLE)
 	__asm__ ("bswap %0" : "=r" (value) : "0" (value));
 	return value;
 #elif defined(CRYPTOPP_BYTESWAP_AVAILABLE)
@@ -1804,7 +1798,7 @@ inline word32 ByteReverse(word32 value)
 	return (word32)__lwbrx(&value,0);
 #elif (_MSC_VER >= 1400) || (defined(_MSC_VER) && !defined(_DLL))
 	return _byteswap_ulong(value);
-#elif CRYPTOPP_FAST_ROTATE(32)
+#elif CRYPTOPP_FAST_ROTATE(32) && !defined(__xlC__)
 	// 5 instructions with rotate instruction, 9 without
 	return (rotrFixed(value, 8U) & 0xff00ff00) | (rotlFixed(value, 8U) & 0x00ff00ff);
 #else
@@ -1815,15 +1809,11 @@ inline word32 ByteReverse(word32 value)
 }
 
 //! \brief Reverses bytes in a 64-bit value
-//! \brief Performs an endian reversal
 //! \param value the 64-bit value to reverse
 //! \details ByteReverse calls bswap if available. Otherwise the function uses a combination of rotates on the word64
 inline word64 ByteReverse(word64 value)
 {
-#if defined(CRYPTOPP_X86_ASM_AVAILABLE) && defined(CRYPTOPP_MOVBE_AVAILABLE) && defined(__x86_64__)
-	__asm__ ("movbe %1, %0" : "=m" (value) : "q" (value));
-	return value;
-#elif defined(__GNUC__) && defined(CRYPTOPP_X86_ASM_AVAILABLE) && defined(__x86_64__)
+#if defined(__GNUC__) && defined(CRYPTOPP_X86_ASM_AVAILABLE) && defined(__x86_64__)
 	__asm__ ("bswap %0" : "=r" (value) : "0" (value));
 	return value;
 #elif defined(CRYPTOPP_BYTESWAP_AVAILABLE)
@@ -2437,7 +2427,6 @@ template<> struct SafeShifter<false>
 	}
 };
 
-//! \class SafeRightShift
 //! \brief Safely right shift values when undefined behavior could occur
 //! \tparam bits the number of bit positions to shift the value
 //! \tparam T class or type
@@ -2452,7 +2441,6 @@ inline T SafeRightShift(T value)
 	return SafeShifter<(bits>=(8*sizeof(T)))>::RightShift(value, bits);
 }
 
-//! \class SafeLeftShift
 //! \brief Safely left shift values when undefined behavior could occur
 //! \tparam bits the number of bit positions to shift the value
 //! \tparam T class or type

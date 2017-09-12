@@ -43,12 +43,32 @@ public:
 	void destroy(pointer p) {CRYPTOPP_UNUSED(p); p->~T();}
 
 	//! \brief Returns the maximum number of elements the allocator can provide
+	//! \details <tt>ELEMS_MAX</tt> is the maximum number of elements the
+	//!   <tt>Allocator</tt> can provide. The value of <tt>ELEMS_MAX</tt> is
+	//!   <tt>SIZE_MAX/sizeof(T)</tt>. <tt>std::numeric_limits</tt> was avoided
+	//!   due to lack of <tt>constexpr</tt>-ness in C++03 and below.
+	//! \note In C++03 and below <tt>ELEMS_MAX</tt> is a static data member of type
+	//!   <tt>size_type</tt>. In C++11 and above <tt>ELEMS_MAX</tt> is an <tt>enum</tt>
+	//!   inheriting from <tt>size_type</tt>. In both cases <tt>ELEMS_MAX</tt> can be
+	//!   used before objects are fully constructed, and it does not suffer the
+	//!   limitations of class methods like <tt>max_size</tt>.
+	//! \sa <A HREF="http://github.com/weidai11/cryptopp/issues/346">Issue 346/CVE-2016-9939</A>
+	//! \since Crypto++ 6.0
+#if defined(CRYPTOPP_DOXYGEN_PROCESSING)
+	static const size_type ELEMS_MAX = ...;
+#elif defined(CRYPTOPP_CXX11_ENUM)
+	enum : size_type {ELEMS_MAX = SIZE_MAX/sizeof(T)};
+#else
+	static const size_type ELEMS_MAX = SIZE_MAX/sizeof(T);
+#endif
+
+	//! \brief Returns the maximum number of elements the allocator can provide
 	//! \returns the maximum number of elements the allocator can provide
 	//! \details Internally, preprocessor macros are used rather than std::numeric_limits
 	//!   because the latter is not a constexpr. Some compilers, like Clang, do not
 	//!   optimize it well under all circumstances. Compilers like GCC, ICC and MSVC appear
 	//!   to optimize it well in either form.
-	CRYPTOPP_CONSTEXPR size_type max_size() const {return (SIZE_MAX/sizeof(T));}
+	CRYPTOPP_CONSTEXPR size_type max_size() const {return ELEMS_MAX;}
 
 #if defined(CRYPTOPP_CXX11_VARIADIC_TEMPLATES) || defined(CRYPTOPP_DOXYGEN_PROCESSING)
 
@@ -83,11 +103,17 @@ protected:
 	//!   because the latter is not a constexpr. Some compilers, like Clang, do not
 	//!   optimize it well under all circumstances. Compilers like GCC, ICC and MSVC appear
 	//!   to optimize it well in either form.
+	//! \details The <tt>sizeof(T) != 1</tt> in the condition attempts to help the
+	//!   compiler optimize the check for byte types. Coverity findings for
+	//!   CONSTANT_EXPRESSION_RESULT were generated without it. For byte types,
+	//!   size never exceeded ELEMS_MAX but the code was not removed.
 	//! \note size is the count of elements, and not the number of bytes
 	static void CheckSize(size_t size)
 	{
+		// Squash MSC C4100 warning for size. Also see commit 42b7c4ea5673.
+		CRYPTOPP_UNUSED(size);
 		// C++ throws std::bad_alloc (C++03) or std::bad_array_new_length (C++11) here.
-		if (size > (SIZE_MAX/sizeof(T)))
+		if (sizeof(T) != 1 && size > ELEMS_MAX)
 			throw InvalidArgument("AllocatorBase: requested size would cause integer overflow");
 	}
 };
@@ -137,7 +163,7 @@ typename A::pointer StandardReallocate(A& alloc, T *oldPtr, typename A::size_typ
 //! \class AllocatorWithCleanup
 //! \brief Allocates a block of memory with cleanup
 //! \tparam T class or type
-//! \tparam T_Align16 boolean that determines whether allocations should be aligned on 16-byte boundaries
+//! \tparam T_Align16 boolean that determines whether allocations should be aligned on a 16-byte boundary
 //! \details If T_Align16 is true, then AllocatorWithCleanup calls AlignedAllocate()
 //!    for memory allocations. If T_Align16 is false, then AllocatorWithCleanup() calls
 //!    UnalignedAllocate() for memory allocations.
@@ -172,8 +198,8 @@ public:
 			return NULLPTR;
 
 #if CRYPTOPP_BOOL_ALIGN16
-		// TODO: should this need the test 'size*sizeof(T) >= 16'?
-		if (T_Align16 && size*sizeof(T) >= 16)
+		// TODO: Does this need the test 'size*sizeof(T) >= 16'?
+		if (T_Align16 && size)
 			return (pointer)AlignedAllocate(size*sizeof(T));
 #endif
 
@@ -190,33 +216,13 @@ public:
 	//!   UnalignedDeallocate() used if T_Align16 is false.
 	void deallocate(void *ptr, size_type size)
 	{
-		CRYPTOPP_ASSERT((ptr && size) || !(ptr || size));
+		// This will fire if SetMark(0) was called in the SecBlock
+		//  Our self tests exercise it, disable it now.
+		// CRYPTOPP_ASSERT((ptr && size) || !(ptr || size));
 		SecureWipeArray((pointer)ptr, size);
 
 #if CRYPTOPP_BOOL_ALIGN16
-		if (T_Align16 && size*sizeof(T) >= 16)
-			return AlignedDeallocate(ptr);
-#endif
-
-		UnalignedDeallocate(ptr);
-	}
-
-	//! \brief Deallocates a block of memory
-	//! \param ptr the pointer for the allocation
-	//! \param size the size of the allocation, in elements
-	//! \param mark the count elements to zeroize
-	//! \details Internally, SecureWipeArray() is called before deallocating the memory.
-	//!   Once the memory block is wiped or zeroized, AlignedDeallocate() or
-	//!   UnalignedDeallocate() is called.
-	//! \details AlignedDeallocate() is used if T_Align16 is true.
-	//!   UnalignedDeallocate() used if T_Align16 is false.
-	void deallocate(void *ptr, size_type size, size_type mark)
-	{
-		CRYPTOPP_ASSERT((ptr && size) || !(ptr || size));
-		SecureWipeArray((pointer)ptr, STDMIN(size, mark));
-
-#if CRYPTOPP_BOOL_ALIGN16
-		if (T_Align16 && size*sizeof(T) >= 16)
+		if (T_Align16 && size)
 			return AlignedDeallocate(ptr);
 #endif
 
@@ -243,8 +249,6 @@ public:
 	}
 
 	//! \brief Template class memeber Rebind
-	//! \tparam T allocated class or type
-	//! \tparam T_Align16 boolean that determines whether allocations should be aligned on 16-byte boundaries
 	//! \tparam U bound class or type
 	//! \details Rebind allows a container class to allocate a different type of object
 	//!   to store elements. For example, a std::list will allocate std::list_node to
@@ -299,12 +303,6 @@ public:
 		CRYPTOPP_ASSERT(false);
 	}
 
-	void deallocate(void *p, size_type n, size_type m)
-	{
-		CRYPTOPP_UNUSED(p); CRYPTOPP_UNUSED(n), CRYPTOPP_UNUSED(m);
-		CRYPTOPP_ASSERT(false);
-	}
-
 	CRYPTOPP_CONSTEXPR size_type max_size() const {return 0;}
 	//LCOV_EXCL_STOP
 };
@@ -313,7 +311,7 @@ public:
 //! \brief Static secure memory block with cleanup
 //! \tparam T class or type
 //! \tparam S fixed-size of the stack-based memory block, in elements
-//! \tparam A AllocatorBase derived class for allocation and cleanup
+//! \tparam T_Align16 boolean that determines whether allocations should be aligned on a 16-byte boundary
 //! \details FixedSizeAllocatorWithCleanup provides a fixed-size, stack-
 //!    based allocation at compile time. The class can grow its memory
 //!    block at runtime if a suitable allocator is available. If size
@@ -400,28 +398,6 @@ public:
 			m_fallbackAllocator.deallocate(ptr, size);
 	}
 
-	//! \brief Deallocates a block of memory
-	//! \param ptr a pointer to the memory block to deallocate
-	//! \param size the count elements in the memory block
-	//! \param mark the count elements to zeroize
-	//! \details The memory block is wiped or zeroized before deallocation.
-	//!   If the statically allocated memory block is active, then no
-	//!   additional actions are taken after the wipe.
-	//! \details If a dynamic memory block is active, then the pointer and
-	//!   size are passed to the allocator for deallocation.
-	void deallocate(void *ptr, size_type size, size_type mark)
-	{
-		if (ptr == GetAlignedArray())
-		{
-			CRYPTOPP_ASSERT(size <= S);
-			CRYPTOPP_ASSERT(m_allocated);
-			m_allocated = false;
-			SecureWipeArray((pointer)ptr, STDMIN(size, mark));
-		}
-		else
-			m_fallbackAllocator.deallocate(ptr, size, mark);
-	}
-
 	//! \brief Reallocates a block of memory
 	//! \param oldPtr the previous allocation
 	//! \param oldSize the size of the previous allocation
@@ -488,13 +464,33 @@ public:
 	typedef typename A::const_pointer const_iterator;
 	typedef typename A::size_type size_type;
 
+	//! \brief Returns the maximum number of elements the block can hold
+	//! \details <tt>ELEMS_MAX</tt> is the maximum number of elements the
+	//!   <tt>SecBlock</tt> can hold. The value of <tt>ELEMS_MAX</tt> is
+	//!   <tt>SIZE_MAX/sizeof(T)</tt>. <tt>std::numeric_limits</tt> was avoided
+	//!   due to lack of <tt>constexpr</tt>-ness in C++03 and below.
+	//! \note In C++03 and below <tt>ELEMS_MAX</tt> is a static data member of type
+	//!   <tt>size_type</tt>. In C++11 and above <tt>ELEMS_MAX</tt> is an <tt>enum</tt>
+	//!   inheriting from <tt>size_type</tt>. In both cases <tt>ELEMS_MAX</tt> can be
+	//!   used before objects are fully constructed, and it does not suffer the
+	//!   limitations of class methods like <tt>max_size</tt>.
+	//! \sa <A HREF="http://github.com/weidai11/cryptopp/issues/346">Issue 346/CVE-2016-9939</A>
+	//! \since Crypto++ 6.0
+#if defined(CRYPTOPP_DOXYGEN_PROCESSING)
+	static const size_type ELEMS_MAX = ...;
+#elif defined(CRYPTOPP_CXX11_ENUM)
+	enum : size_type {ELEMS_MAX = A::ELEMS_MAX};
+#else
+	static const size_type ELEMS_MAX = SIZE_MAX/sizeof(T);
+#endif
+
 	//! \brief Construct a SecBlock with space for size elements.
 	//! \param size the size of the allocation, in elements
 	//! \throws std::bad_alloc
 	//! \details The elements are not initialized.
 	//! \note size is the count of elements, and not the number of bytes
 	explicit SecBlock(size_type size=0)
-		: m_mark(SIZE_MAX/sizeof(T)), m_size(size), m_ptr(m_alloc.allocate(size, NULLPTR)) { }
+		: m_mark(ELEMS_MAX), m_size(size), m_ptr(m_alloc.allocate(size, NULLPTR)) { }
 
 	//! \brief Copy construct a SecBlock from another SecBlock
 	//! \param t the other SecBlock
@@ -514,7 +510,7 @@ public:
 	//!    Otherwise, the block is empty and not initialized.
 	//! \note size is the count of elements, and not the number of bytes
 	SecBlock(const T *ptr, size_type len)
-		: m_mark(SIZE_MAX/sizeof(T)), m_size(len), m_ptr(m_alloc.allocate(len, NULLPTR)) {
+		: m_mark(ELEMS_MAX), m_size(len), m_ptr(m_alloc.allocate(len, NULLPTR)) {
 			CRYPTOPP_ASSERT((!m_ptr && !m_size) || (m_ptr && m_size));
 			if (ptr && m_ptr)
 				memcpy_s(m_ptr, m_size*sizeof(T), ptr, len*sizeof(T));
@@ -523,7 +519,7 @@ public:
 		}
 
 	~SecBlock()
-		{m_alloc.deallocate(m_ptr, m_size, m_mark);}
+		{m_alloc.deallocate(m_ptr, STDMIN(m_size, m_mark));}
 
 #ifdef __BORLANDC__
 	operator T *() const
@@ -589,17 +585,21 @@ public:
 	//!    preserving the streaming interface. The <tt>count</tt> controls the number of
 	//!    elements zeroized, which can be less than <tt>size</tt> or 0.
 	//! \details An internal variable, <tt>m_mark</tt>, is initialized to the maximum number
-	//!    of elements. Deallocation triggers a zeroization, and the number of elements
-	//!    zeroized is <tt>STDMIN(m_size, m_mark)</tt>. After zeroization, the memory is
-	//!    returned to the system.
+	//!    of elements. The maximum number of elements is <tt>ELEMS_MAX</tt>. Deallocation
+	//!    triggers a zeroization, and the number of elements zeroized is
+	//!    <tt>STDMIN(m_size, m_mark)</tt>. After zeroization, the memory is returned to the
+	//!    system.
 	//! \details The ASN.1 decoder uses SetMark() to set the element count to 0
 	//!    before throwing an exception. In this case, the attacker provides a large
 	//!    BER encoded length (say 64MB) but only a small number of content octets
 	//!    (say 16). If the allocator zeroized all 64MB, then a transient DoS could
 	//!    occur as CPU cycles are spent zeroizing unintialized memory.
-	//! \details If Assign(), New(), Grow(), CleanNew(), CleanGrow() are called, then the
-	//!    count is reset to its default state, which is the maxmimum number of elements.
+	//! \details Generally speaking, any operation which changes the size of the SecBlock
+	//!    results in the mark being reset to <tt>ELEMS_MAX</tt>. In particular, if Assign(),
+	//!    New(), Grow(), CleanNew(), CleanGrow() are called, then the count is reset to
+	//!    <tt>ELEMS_MAX</tt>. The list is not exhaustive.
 	//! \since Crypto++ 6.0
+	//! \sa <A HREF="http://github.com/weidai11/cryptopp/issues/346">Issue 346/CVE-2016-9939</A>
 	void SetMark(size_t count) {m_mark = count;}
 
 	//! \brief Set contents and size from an array
@@ -610,8 +610,9 @@ public:
 	void Assign(const T *ptr, size_type len)
 	{
 		New(len);
-		if (m_ptr && ptr && len)
+		if (m_ptr && ptr)
 			{memcpy_s(m_ptr, m_size*sizeof(T), ptr, len*sizeof(T));}
+		m_mark = ELEMS_MAX;
 	}
 
 	//! \brief Copy contents from another SecBlock
@@ -625,9 +626,10 @@ public:
 		if (this != &t)
 		{
 			New(t.m_size);
-			if (m_ptr && t.m_ptr && t.m_size)
+			if (m_ptr && t.m_ptr)
 				{memcpy_s(m_ptr, m_size*sizeof(T), t, t.m_size*sizeof(T));}
 		}
+		m_mark = ELEMS_MAX;
 	}
 
 	//! \brief Assign contents from another SecBlock
@@ -663,6 +665,7 @@ public:
 				memcpy_s(m_ptr+oldSize, (m_size-oldSize)*sizeof(T), m_ptr, oldSize*sizeof(T));
 			}
 		}
+		m_mark = ELEMS_MAX;
 		return *this;
 	}
 
@@ -718,7 +721,7 @@ public:
 	{
 		m_ptr = m_alloc.reallocate(m_ptr, m_size, newSize, false);
 		m_size = newSize;
-		m_mark = SIZE_MAX/sizeof(T);
+		m_mark = ELEMS_MAX;
 	}
 
 	//! \brief Change size without preserving contents
@@ -733,6 +736,7 @@ public:
 	{
 		New(newSize);
 		if (m_ptr) {memset_z(m_ptr, 0, m_size*sizeof(T));}
+		m_mark = ELEMS_MAX;
 	}
 
 	//! \brief Change size and preserve contents
@@ -749,8 +753,8 @@ public:
 		{
 			m_ptr = m_alloc.reallocate(m_ptr, m_size, newSize, true);
 			m_size = newSize;
-			m_mark = SIZE_MAX/sizeof(T);
 		}
+		m_mark = ELEMS_MAX;
 	}
 
 	//! \brief Change size and preserve contents
@@ -768,8 +772,8 @@ public:
 			m_ptr = m_alloc.reallocate(m_ptr, m_size, newSize, true);
 			memset_z(m_ptr+m_size, 0, (newSize-m_size)*sizeof(T));
 			m_size = newSize;
-			m_mark = SIZE_MAX/sizeof(T);
 		}
+		m_mark = ELEMS_MAX;
 	}
 
 	//! \brief Change size and preserve contents
@@ -783,7 +787,7 @@ public:
 	{
 		m_ptr = m_alloc.reallocate(m_ptr, m_size, newSize, true);
 		m_size = newSize;
-		m_mark = SIZE_MAX/sizeof(T);
+		m_mark = ELEMS_MAX;
 	}
 
 	//! \brief Swap contents with another SecBlock
@@ -798,7 +802,7 @@ public:
 		std::swap(m_ptr, b.m_ptr);
 	}
 
-// protected:
+protected:
 	A m_alloc;
 	size_type m_mark, m_size;
 	T *m_ptr;
@@ -840,7 +844,7 @@ public:
 //! \brief Fixed size stack-based SecBlock with 16-byte alignment
 //! \tparam T class or type
 //! \tparam S fixed-size of the stack-based memory block, in elements
-//! \tparam A AllocatorBase derived class for allocation and cleanup
+//! \tparam T_Align16 boolean that determines whether allocations should be aligned on a 16-byte boundary
 template <class T, unsigned int S, bool T_Align16 = true>
 class FixedSizeAlignedSecBlock : public FixedSizeSecBlock<T, S, FixedSizeAllocatorWithCleanup<T, S, NullAllocator<T>, T_Align16> >
 {

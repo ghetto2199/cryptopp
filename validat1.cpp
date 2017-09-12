@@ -45,6 +45,7 @@
 #include "osrng.h"
 #include "drbg.h"
 #include "rdrand.h"
+#include "padlkrng.h"
 #include "mersenne.h"
 #include "randpool.h"
 #include "zdeflate.h"
@@ -56,6 +57,8 @@
 #include <memory>
 #include <iostream>
 #include <iomanip>
+
+#undef BLOCKING_RNG_AVAILABLE
 
 #include "validate.h"
 
@@ -84,6 +87,7 @@ bool ValidateAll(bool thorough)
 	pass=TestMersenne() && pass;
 #endif
 #if (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64)
+	pass=TestPadlockRNG() && pass;
 	pass=TestRDRAND() && pass;
 	pass=TestRDSEED() && pass;
 #endif
@@ -264,14 +268,14 @@ bool TestSettings()
 	// Don't assert the alignment of testvals. That's what this test is for.
 	byte testvals[10] = {1,2,2,3,3,3,3,2,2,1};
 	if (*(word32 *)(void *)(testvals+3) == 0x03030303 && *(word64 *)(void *)(testvals+1) == W64LIT(0x0202030303030202))
-		std::cout << "passed:  Your machine allows unaligned data access.\n";
+		std::cout << "passed:  Unaligned data access (CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS).\n";
 	else
 	{
 		std::cout << "FAILED:  Unaligned data access gave incorrect results.\n";
 		pass = false;
 	}
 #else
-	std::cout << "passed:  CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS is not defined. Will restrict to aligned data access.\n";
+	std::cout << "passed:  Aligned data access (no CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS).\n";
 #endif
 
 	if (sizeof(byte) == 1)
@@ -338,37 +342,50 @@ bool TestSettings()
 #endif
 	std::cout << std::endl;
 
-#ifdef CRYPTOPP_CPUID_AVAILABLE
-	bool hasMMX = HasMMX();
-	bool hasISSE = HasISSE();
-	bool hasSSE2 = HasSSE2();
-	bool hasSSSE3 = HasSSSE3();
-	bool hasSSE4 = HasSSE4();
-	bool isP4 = IsP4();
-	int cacheLineSize = GetCacheLineSize();
-
-	if ((isP4 && (!hasMMX || !hasSSE2)) || (hasSSE2 && !hasMMX) || (cacheLineSize < 16 || cacheLineSize > 256 || !IsPowerOf2(cacheLineSize)))
+	const int cacheLineSize = GetCacheLineSize();
+	if (cacheLineSize < 16 || cacheLineSize > 256 || !IsPowerOf2(cacheLineSize))
 	{
 		std::cout << "FAILED:  ";
 		pass = false;
 	}
 	else
 		std::cout << "passed:  ";
+	std::cout << "cacheLineSize == " << cacheLineSize << std::endl;
 
-	std::cout << "hasMMX == " << hasMMX << ", hasISSE == " << hasISSE << ", hasSSE2 == " << hasSSE2 << ", hasSSSE3 == " << hasSSSE3 << ", hasSSE4 == " << hasSSE4;
+#ifdef CRYPTOPP_CPUID_AVAILABLE
+	bool hasSSE2 = HasSSE2();
+	bool hasSSSE3 = HasSSSE3();
+	bool hasSSE41 = HasSSE41();
+	bool hasSSE42 = HasSSE42();
+	bool isP4 = IsP4();
+
+	std::cout << "hasSSE2 == " << hasSSE2 << ", hasSSSE3 == " << hasSSSE3 << ", hasSSE4.1 == " << hasSSE41 << ", hasSSE4.2 == " << hasSSE42;
 	std::cout << ", hasAESNI == " << HasAESNI() << ", hasCLMUL == " << HasCLMUL() << ", hasRDRAND == " << HasRDRAND() << ", hasRDSEED == " << HasRDSEED();
-	std::cout << ", hasSHA == " << HasSHA() << ", isP4 == " << isP4 << ", cacheLineSize == " << cacheLineSize << std::endl;
+	std::cout << ", hasSHA == " << HasSHA() << ", isP4 == " << isP4;
 
 #elif (CRYPTOPP_BOOL_ARM32 || CRYPTOPP_BOOL_ARM64)
 	bool hasNEON = HasNEON();
-	bool hasPMULL = HasPMULL();
 	bool hasCRC32 = HasCRC32();
+	bool hasPMULL = HasPMULL();
 	bool hasAES = HasAES();
 	bool hasSHA1 = HasSHA1();
 	bool hasSHA2 = HasSHA2();
 
 	std::cout << "passed:  ";
-	std::cout << "hasNEON == " << hasNEON << ", hasPMULL == " << hasPMULL << ", hasCRC32 == " << hasCRC32 << ", hasAES == " << hasAES << ", hasSHA1 == " << hasSHA1 << ", hasSHA2 == " << hasSHA2 << std::endl;
+	std::cout << "hasNEON == " << hasNEON << ", hasCRC32 == " << hasCRC32 << ", hasPMULL == " << hasPMULL;
+	std::cout << ", hasAES == " << hasAES << ", hasSHA1 == " << hasSHA1 << ", hasSHA2 == " << hasSHA2 << std::endl;
+
+#elif (CRYPTOPP_BOOL_PPC32 || CRYPTOPP_BOOL_PPC64)
+	bool hasAltivec = HasAltivec();
+	bool hasPower8 = HasPower8();
+	bool hasAES = HasAES();
+	bool hasSHA1 = HasSHA1();
+	bool hasSHA2 = HasSHA2();
+
+	std::cout << "passed:  ";
+	std::cout << "hasAltivec == " << hasAltivec << ", hasPower8 == " << hasPower8;
+	std::cout << ", hasAES == " << hasAES << ", hasSHA1 == " << hasSHA1 << ", hasSHA2 == " << hasSHA2 << std::endl;
+
 #endif
 
 	if (!pass)
@@ -719,6 +736,118 @@ bool TestRandomPool()
 	}
 #endif
 
+	// Old, PGP 2.6 style RandomPool. Added because users were still having problems
+	//  with it in 2017. The missing functionality was a barrier to upgrades.
+	std::cout << "\nTesting OldRandomPool generator...\n\n";
+	{
+		OldRandomPool old;
+		static const unsigned int ENTROPY_SIZE = 32;
+
+		// https://github.com/weidai11/cryptopp/issues/452
+		byte actual[32], expected[32] = {
+			0x41,0xD1,0xEF,0x8F,0x10,0x3C,0xE2,0x94,
+			0x47,0xC0,0xC3,0x86,0x66,0xBC,0x86,0x09,
+			0x57,0x77,0x73,0x91,0x57,0x4D,0x93,0x66,
+			0xD1,0x13,0xE1,0xBA,0x07,0x49,0x8F,0x75
+		};
+
+		SecByteBlock seed(384);
+		for (size_t i=0; i<384; ++i)
+			seed[i] = static_cast<byte>(i);
+		old.IncorporateEntropy(seed, seed.size());
+
+		old.GenerateBlock(actual, sizeof(actual));
+		fail = (0 != ::memcmp(actual, expected, sizeof(expected)));
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  Expected sequence from PGP-style RandomPool (circa 2007)\n";
+
+		OldRandomPool prng;
+		MeterFilter meter(new Redirector(TheBitBucket()));
+		RandomNumberSource test(prng, 100000, true, new Deflator(new Redirector(meter)));
+
+		fail = false;
+		if (meter.GetTotalBytes() < 100000)
+			fail = true;
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  100000 generated bytes compressed to " << meter.GetTotalBytes() << " bytes by DEFLATE\n";
+
+		try
+		{
+			fail = false;
+			prng.DiscardBytes(100000);
+		}
+		catch (const Exception&)
+		{
+			fail = true;
+		}
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  discarded 10000 bytes" << std::endl;
+
+		try
+		{
+			fail = false;
+			if(prng.CanIncorporateEntropy())
+			{
+				SecByteBlock entropy(ENTROPY_SIZE);
+				GlobalRNG().GenerateBlock(entropy, entropy.SizeInBytes());
+
+				prng.IncorporateEntropy(entropy, entropy.SizeInBytes());
+				prng.IncorporateEntropy(entropy, entropy.SizeInBytes());
+				prng.IncorporateEntropy(entropy, entropy.SizeInBytes());
+				prng.IncorporateEntropy(entropy, entropy.SizeInBytes());
+			}
+		}
+		catch (const Exception& /*ex*/)
+		{
+			fail = true;
+		}
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  IncorporateEntropy with " << 4*ENTROPY_SIZE << " bytes\n";
+
+		try
+		{
+			// Miscellaneous for code coverage
+			fail = false;
+			word32 result = prng.GenerateWord32();
+			result = prng.GenerateWord32((result & 0xff), 0xffffffff - (result & 0xff));
+			prng.GenerateBlock(reinterpret_cast<byte*>(&result), 4);
+			prng.GenerateBlock(reinterpret_cast<byte*>(&result), 3);
+			prng.GenerateBlock(reinterpret_cast<byte*>(&result), 2);
+			prng.GenerateBlock(reinterpret_cast<byte*>(&result), 1);
+		}
+		catch (const Exception&)
+		{
+			fail = true;
+		}
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  GenerateWord32 and Crop\n";
+	}
+
 	return pass;
 }
 
@@ -928,6 +1057,165 @@ bool TestMersenne()
 #endif
 
 #if (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64)
+	bool TestPadlockRNG()
+{
+	std::cout << "\nTesting Padlock RNG generator...\n\n";
+
+	bool pass = true, fail = false;
+	member_ptr<RandomNumberGenerator> rng;
+
+	try {rng.reset(new PadlockRNG);}
+	catch (const PadlockRNG_Err &) {}
+	if (rng.get())
+	{
+		PadlockRNG& padlock = dynamic_cast<PadlockRNG&>(*rng.get());
+		static const unsigned int SIZE = 10000;
+		SecByteBlock zero(16), one(16), t(16);
+		std::memset(zero, 0x00, 16);
+		std::memset( one, 0xff, 16);
+
+		// Cryptography Research, Inc tests
+		word32 oldDivisor = padlock.SetDivisor(0);
+		padlock.GenerateBlock(t, t.size());
+		word32 msr = padlock.GetMSR();
+		padlock.SetDivisor(oldDivisor);
+
+		// Bit 6 should be set
+		fail = !(msr & (1 << 6U));
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  VIA RNG is activated\n";
+
+		// Bit 13 should be unset
+		fail = !!(msr & (1 << 13U));
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  von Neumann corrector is activated\n";
+
+		// Bit 14 should be unset
+		fail = !!(msr & (1 << 14U));
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  String filter is deactivated\n";
+
+		// Bit 12:10 should be unset
+		fail = !!(msr & (0x7 << 10U));
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  Bias voltage is unmodified\n";
+
+		fail = false;
+		if (t == zero || t == one)
+			fail = true;
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  All 0's or all 1's test\n";
+
+		MeterFilter meter(new Redirector(TheBitBucket()));
+		Deflator deflator(new Redirector(meter));
+		MaurerRandomnessTest maurer;
+
+		ChannelSwitch chsw;
+		chsw.AddDefaultRoute(deflator);
+		chsw.AddDefaultRoute(maurer);
+
+		RandomNumberSource rns(padlock, SIZE, true, new Redirector(chsw));
+		deflator.Flush(true);
+
+		CRYPTOPP_ASSERT(0 == maurer.BytesNeeded());
+		const double mv = maurer.GetTestValue();
+		fail = false;
+		if (mv < 0.98f)
+			fail = true;
+
+		// Coverity finding, also see http://stackoverflow.com/a/34509163/608639.
+		StreamState ss(std::cout);
+		std::cout << std::setiosflags(std::ios::fixed) << std::setprecision(6);
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  Maurer Randomness Test returned value " << mv << "\n";
+
+		fail = false;
+		if (meter.GetTotalBytes() < SIZE)
+			fail = true;
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  " << SIZE << " generated bytes compressed to " << meter.GetTotalBytes() << " bytes by DEFLATE\n";
+
+		try
+		{
+			fail = false;
+			padlock.DiscardBytes(SIZE);
+		}
+		catch (const Exception&)
+		{
+			fail = true;
+		}
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  discarded " << SIZE << " bytes\n";
+
+		try
+		{
+			// Miscellaneous for code coverage
+			(void)padlock.AlgorithmName();
+			(void)padlock.CanIncorporateEntropy();
+			padlock.IncorporateEntropy(NULLPTR, 0);
+
+			word32 result = padlock.GenerateWord32();
+			result = padlock.GenerateWord32((result & 0xff), 0xffffffff - (result & 0xff));
+			padlock.GenerateBlock(reinterpret_cast<byte*>(&result), 4);
+			padlock.GenerateBlock(reinterpret_cast<byte*>(&result), 3);
+			padlock.GenerateBlock(reinterpret_cast<byte*>(&result), 2);
+			padlock.GenerateBlock(reinterpret_cast<byte*>(&result), 1);
+			fail = false;
+		}
+		catch (const Exception&)
+		{
+			fail = true;
+		}
+
+		pass &= !fail;
+		if (fail)
+			std::cout << "FAILED:";
+		else
+			std::cout << "passed:";
+		std::cout << "  GenerateWord32 and Crop\n";
+	}
+	else
+		std::cout << "Padlock RNG generator not available, skipping test.\n";
+
+	return pass;
+}
+
 bool TestRDRAND()
 {
 	std::cout << "\nTesting RDRAND generator...\n\n";
@@ -1634,7 +1922,9 @@ public:
 template <class E, class D> class FixedRoundsCipherFactory : public CipherFactory
 {
 public:
-	FixedRoundsCipherFactory(unsigned int keylen=0) : m_keylen(keylen?keylen:E::DEFAULT_KEYLENGTH) {}
+	FixedRoundsCipherFactory(unsigned int keylen=0) :
+		m_keylen(keylen ? keylen : static_cast<unsigned int>(E::DEFAULT_KEYLENGTH)) {}
+
 	unsigned int BlockSize() const {return E::BLOCKSIZE;}
 	unsigned int KeyLength() const {return m_keylen;}
 
@@ -1649,9 +1939,11 @@ public:
 template <class E, class D> class VariableRoundsCipherFactory : public CipherFactory
 {
 public:
-	VariableRoundsCipherFactory(unsigned int keylen=0, unsigned int rounds=0)
-		: m_keylen(keylen ? keylen : E::DEFAULT_KEYLENGTH), m_rounds(rounds ? rounds : E::DEFAULT_ROUNDS) {}
-	unsigned int BlockSize() const {return E::BLOCKSIZE;}
+	VariableRoundsCipherFactory(unsigned int keylen=0, unsigned int rounds=0) :
+		m_keylen(keylen ? keylen : static_cast<unsigned int>(E::DEFAULT_KEYLENGTH)),
+		m_rounds(rounds ? rounds : static_cast<unsigned int>(E::DEFAULT_ROUNDS)) {}
+
+	unsigned int BlockSize() const {return static_cast<unsigned int>(E::BLOCKSIZE);}
 	unsigned int KeyLength() const {return m_keylen;}
 
 	BlockTransformation* NewEncryption(const byte *keyStr) const
@@ -1671,9 +1963,9 @@ bool BlockTransformationTest(const CipherFactory &cg, BufferedTransformation &va
 
 	while (valdata.MaxRetrievable() && tuples--)
 	{
-		valdata.Get(key, cg.KeyLength());
-		valdata.Get(plain, cg.BlockSize());
-		valdata.Get(cipher, cg.BlockSize());
+		(void)valdata.Get(key, cg.KeyLength());
+		(void)valdata.Get(plain, cg.BlockSize());
+		(void)valdata.Get(cipher, cg.BlockSize());
 
 		member_ptr<BlockTransformation> transE(cg.NewEncryption(key));
 		transE->ProcessBlock(plain, out);
@@ -2071,34 +2363,6 @@ bool ValidateCipherModes()
 		pass = pass && !fail;
 		std::cout << (fail ? "FAILED   " : "passed   ") << "DMAC" << std::endl;
 	}
-	{
-		CTR_Mode<AES>::Encryption modeE(plain, 16, plain);
-		CTR_Mode<AES>::Decryption modeD(plain, 16, plain);
-		fail = !TestModeIV(modeE, modeD);
-		pass = pass && !fail;
-		std::cout << (fail ? "FAILED   " : "passed   ") << "AES CTR Mode" << std::endl;
-	}
-	{
-		OFB_Mode<AES>::Encryption modeE(plain, 16, plain);
-		OFB_Mode<AES>::Decryption modeD(plain, 16, plain);
-		fail = !TestModeIV(modeE, modeD);
-		pass = pass && !fail;
-		std::cout << (fail ? "FAILED   " : "passed   ") << "AES OFB Mode" << std::endl;
-	}
-	{
-		CFB_Mode<AES>::Encryption modeE(plain, 16, plain);
-		CFB_Mode<AES>::Decryption modeD(plain, 16, plain);
-		fail = !TestModeIV(modeE, modeD);
-		pass = pass && !fail;
-		std::cout << (fail ? "FAILED   " : "passed   ") << "AES CFB Mode" << std::endl;
-	}
-	{
-		CBC_Mode<AES>::Encryption modeE(plain, 16, plain);
-		CBC_Mode<AES>::Decryption modeD(plain, 16, plain);
-		fail = !TestModeIV(modeE, modeD);
-		pass = pass && !fail;
-		std::cout << (fail ? "FAILED   " : "passed   ") << "AES CBC Mode" << std::endl;
-	}
 
 	return pass;
 }
@@ -2138,11 +2402,11 @@ bool ValidateRC2()
 	{
 		byte keyLen, effectiveLen;
 
-		valdata.Get(keyLen);
-		valdata.Get(effectiveLen);
-		valdata.Get(key, keyLen);
-		valdata.Get(plain, RC2Encryption::BLOCKSIZE);
-		valdata.Get(cipher, RC2Encryption::BLOCKSIZE);
+		(void)valdata.Get(keyLen);
+		(void)valdata.Get(effectiveLen);
+		(void)valdata.Get(key, keyLen);
+		(void)valdata.Get(plain, RC2Encryption::BLOCKSIZE);
+		(void)valdata.Get(cipher, RC2Encryption::BLOCKSIZE);
 
 		member_ptr<BlockTransformation> transE(new RC2Encryption(key, keyLen, effectiveLen));
 		transE->ProcessBlock(plain, out);

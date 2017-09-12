@@ -211,13 +211,13 @@ bool ValidateMD5()
 
 bool ValidateSHA()
 {
-	std::cout << "\nSHA validation suite running...\n\n";
+	std::cout << "\nSHA validation suite running...\n";
 	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/sha.txt");
 }
 
 bool ValidateSHA2()
 {
-	std::cout << "\nSHA validation suite running...\n\n";
+	std::cout << "\nSHA validation suite running...\n";
 	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/sha.txt");
 }
 

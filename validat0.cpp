@@ -163,13 +163,12 @@ bool TestCompressors()
         for (unsigned int i = 0; i<128; ++i)
         {
             std::string src, dest, rec;
-            unsigned int len = GlobalRNG().GenerateWord32(0, 0xfff);
+            unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
 
-            src.resize(len);
-            GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-
+            RandomNumberSource(GlobalRNG(), len, true, new StringSink(src));
             StringSource(src, true, new Gzip(new StringSink(dest)));
             StringSource(dest, true, new Gunzip(new StringSink(rec)));
+
             if (src != rec)
                 throw Exception(Exception::OTHER_ERROR, "Gzip failed to decompress stream");
 
@@ -198,18 +197,16 @@ bool TestCompressors()
     {
         std::string filename = "test.txt";
         std::string comment = "This is a test";
-        word32 filetime = GlobalRNG().GenerateWord32(0, 0xffffff);
+        word32 filetime = GlobalRNG().GenerateWord32(4, 0xffffff);
 
         AlgorithmParameters params = MakeParameters(Name::FileTime(), (int)filetime)
             (Name::FileName(), ConstByteArrayParameter(filename.c_str(), false))
             (Name::Comment(), ConstByteArrayParameter(comment.c_str(), false));
 
         std::string src, dest;
-        unsigned int len = GlobalRNG().GenerateWord32(0, 0xfff);
+        unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
 
-        src.resize(len);
-        GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-
+        RandomNumberSource(GlobalRNG(), len, true, new StringSink(src));
         Gunzip unzip(new StringSink(dest));
         StringSource(src, true, new Gzip(params, new Redirector(unzip)));
 
@@ -232,14 +229,12 @@ bool TestCompressors()
     // Unzip random data. See if we can induce a crash
     for (unsigned int i = 0; i<128; i++)
     {
-        std::string src, dest;
-        unsigned int len = GlobalRNG().GenerateWord32(8, 0xfff);
-
-        src.resize(len);
-        GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
+        SecByteBlock src;
+        unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
+        RandomNumberSource(GlobalRNG(), len, true, new ArraySink(src, src.size()));
 
         try {
-            StringSource(src, true, new Gunzip(new StringSink(dest)));
+            ArraySource(src.data(), src.size(), true, new Gunzip(new Redirector(TheBitBucket())));
         }
         catch (const Exception&) {}
     }
@@ -247,12 +242,13 @@ bool TestCompressors()
     // Unzip random data. See if we can induce a crash
     for (unsigned int i = 0; i<128; i++)
     {
-        std::string src, dest;
-        unsigned int len = GlobalRNG().GenerateWord32(8, 0xfff);
-
+        SecByteBlock src;
+        unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
         src.resize(len);
-        GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-        src[0] = (byte)0x1f; src[1] = (byte)0x8b;  // magic header
+        RandomNumberSource(GlobalRNG(), len, true, new ArraySink(src, src.size()));
+
+        src[0] = (byte)0x1f;  // magic header
+        src[1] = (byte)0x8b;
         src[2] = 0x00;  // extra flags
         src[3] = src[3] & (2 | 4 | 8 | 16 | 32);   // flags
 
@@ -270,7 +266,7 @@ bool TestCompressors()
         // The remainder are extra headers and the payload
 
         try {
-            StringSource(src, true, new Gunzip(new StringSink(dest)));
+            ArraySource(src.data(), src.size(), true, new Gunzip(new Redirector(TheBitBucket())));
         }
         catch (const Exception&) {}
     }
@@ -288,13 +284,12 @@ bool TestCompressors()
         for (unsigned int i = 0; i<128; ++i)
         {
             std::string src, dest, rec;
-            unsigned int len = GlobalRNG().GenerateWord32(0, 0xfff);
+            unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
 
-            src.resize(len);
-            GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-
+            RandomNumberSource(GlobalRNG(), len, true, new StringSink(src));
             StringSource(src, true, new Deflator(new StringSink(dest)));
             StringSource(dest, true, new Inflator(new StringSink(rec)));
+
             if (src != rec)
                 throw Exception(Exception::OTHER_ERROR, "Inflate failed to decompress stream");
 
@@ -318,12 +313,13 @@ bool TestCompressors()
     // Inflate random data. See if we can induce a crash
     for (unsigned int i = 0; i<128; i++)
     {
-        std::string src, dest;
-        unsigned int len = GlobalRNG().GenerateWord32(8, 0xfff);
-
+        SecByteBlock src;
+        unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
         src.resize(len);
-        GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-        src[0] = (byte)0x1f; src[1] = (byte)0x8b;  // magic Header
+        RandomNumberSource(GlobalRNG(), len, true, new ArraySink(src, src.size()));
+
+        src[0] = (byte)0x1f;  // magic header
+        src[1] = (byte)0x8b;
         src[2] = 0x00;  // extra flags
         src[3] = src[3] & (2 | 4 | 8 | 16 | 32);   // flags
 
@@ -336,7 +332,7 @@ bool TestCompressors()
         // The remainder are extra headers and the payload
 
         try {
-            StringSource(src, true, new Inflator(new StringSink(dest)));
+            ArraySource(src.data(), src.size(), true, new Inflator(new Redirector(TheBitBucket())));
         }
         catch (const Exception&) {}
     }
@@ -344,14 +340,12 @@ bool TestCompressors()
     // Inflate random data. See if we can induce a crash
     for (unsigned int i = 0; i<128; i++)
     {
-        std::string src, dest;
-        unsigned int len = GlobalRNG().GenerateWord32(8, 0xfff);
-
-        src.resize(len);
-        GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
+        SecByteBlock src;
+        unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
+        RandomNumberSource(GlobalRNG(), len, true, new ArraySink(src, src.size()));
 
         try {
-            StringSource(src, true, new Inflator(new StringSink(dest)));
+            ArraySource(src.data(), src.size(), true, new Inflator(new Redirector(TheBitBucket())));
         }
         catch (const Exception&) {}
     }
@@ -369,13 +363,12 @@ bool TestCompressors()
         for (unsigned int i = 0; i<128; ++i)
         {
             std::string src, dest, rec;
-            unsigned int len = GlobalRNG().GenerateWord32(0, 0xfff);
+            unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
 
-            src.resize(len);
-            GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-
+            RandomNumberSource(GlobalRNG(), len, true, new StringSink(src));
             StringSource(src, true, new ZlibCompressor(new StringSink(dest)));
             StringSource(dest, true, new ZlibDecompressor(new StringSink(rec)));
+
             if (src != rec)
                 throw Exception(Exception::OTHER_ERROR, "Zlib failed to decompress stream");
 
@@ -399,11 +392,10 @@ bool TestCompressors()
     // Decompress random data. See if we can induce a crash
     for (unsigned int i = 0; i<128; i++)
     {
-        std::string src, dest;
-        unsigned int len = GlobalRNG().GenerateWord32(8, 0xfff);
-
+        SecByteBlock src;
+        unsigned int len = GlobalRNG().GenerateWord32(4, 0xfff);
         src.resize(len);
-        GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
+        RandomNumberSource(GlobalRNG(), len, true, new ArraySink(src, src.size()));
 
         // CMF byte
         src[0] = (byte)(GlobalRNG().GenerateWord32(0, 14) << 4);
@@ -416,7 +408,7 @@ bool TestCompressors()
         // The remainder are the payload, but missing Adler32
 
         try {
-            StringSource(src, true, new ZlibDecompressor(new StringSink(dest)));
+            ArraySource(src.data(), src.size(), true, new ZlibDecompressor(new Redirector(TheBitBucket())));
         }
         catch (const Exception&) {}
     }
@@ -443,14 +435,11 @@ bool TestEncryptors()
         for (unsigned int i=0; i<ENCRYPT_COUNT; ++i)
         {
             std::string pwd, src, dest, rec;
-            unsigned int len = GlobalRNG().GenerateWord32(16, 0xfff);
+            unsigned int len = GlobalRNG().GenerateWord32(8, 0xfff);
+            unsigned int plen = GlobalRNG().GenerateWord32(0, 32);
 
-            src.resize(len);
-            GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-
-            HexEncoder encoder(new StringSink(pwd));
-            encoder.Put(reinterpret_cast<byte*>(&src[0]), src.length()/4);
-            encoder.MessageEnd();
+            RandomNumberSource(GlobalRNG(), len, true, new StringSink(src));
+            RandomNumberSource(GlobalRNG(), plen, true, new HexEncoder(new StringSink(pwd)));
 
             StringSource(src, true, new DefaultEncryptor(pwd.c_str(), new StringSink(dest)));
             StringSource(dest, true, new DefaultDecryptor(pwd.c_str(), new StringSink(rec)));
@@ -475,15 +464,13 @@ bool TestEncryptors()
     {
         for (unsigned int i=0; i<ENCRYPT_MAC_COUNT; ++i)
         {
+            const unsigned int runt = DefaultEncryptorWithMAC::SALTLENGTH + DefaultEncryptorWithMAC::KEYLENGTH;
             std::string pwd, src, dest, rec;
-            unsigned int len = GlobalRNG().GenerateWord32(16, 0xfff);
+            unsigned int len = GlobalRNG().GenerateWord32(runt, 0xfff);
+            unsigned int plen = GlobalRNG().GenerateWord32(0, 32);
 
-            src.resize(len);
-            GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-
-            HexEncoder encoder(new StringSink(pwd));
-            encoder.Put(reinterpret_cast<byte*>(&src[0]), src.length()/4);
-            encoder.MessageEnd();
+            RandomNumberSource(GlobalRNG(), len, true, new StringSink(src));
+            RandomNumberSource(GlobalRNG(), plen, true, new HexEncoder(new StringSink(pwd)));
 
             StringSource(src, true, new DefaultEncryptorWithMAC(pwd.c_str(),new StringSink(dest)));
             StringSource(dest, true, new DefaultDecryptorWithMAC(pwd.c_str(), new StringSink(rec)));
@@ -516,7 +503,7 @@ bool TestEncryptors()
                 // undo previous tamper
                 dest[DefaultDecryptorWithMAC::SALTLENGTH+DefaultDecryptorWithMAC::KEYLENGTH/2] ^= 0x01;
                 // tamper encrypted data
-                dest[dest.length()-2] ^= 0x01;
+                dest[dest.size()-2] ^= 0x01;
                 StringSource(dest, true, new DefaultDecryptorWithMAC(pwd.c_str(), new StringSink(rec)));
                 std::cout << "FAILED:  DefaultDecryptorWithMAC failed to detect a tampered data\n";
                 fail2 = true;
@@ -542,16 +529,14 @@ bool TestEncryptors()
         {
             std::string pwd, src, dest, rec;
             unsigned int len = GlobalRNG().GenerateWord32(16, 0xfff);
+            unsigned int plen = GlobalRNG().GenerateWord32(0, 32);
 
-            src.resize(len);
-            GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-
-            HexEncoder encoder(new StringSink(pwd));
-            encoder.Put(reinterpret_cast<byte*>(&src[0]), src.length()/4);
-            encoder.MessageEnd();
+            RandomNumberSource(GlobalRNG(), len, true, new StringSink(src));
+            RandomNumberSource(GlobalRNG(), plen, true, new HexEncoder(new StringSink(pwd)));
 
             StringSource(src, true, new LegacyEncryptor(pwd.c_str(),new StringSink(dest)));
             StringSource(dest, true, new LegacyDecryptor(pwd.c_str(),new StringSink(rec)));
+
             if (src != rec)
                 throw Exception(Exception::OTHER_ERROR, "LegacyEncryptor failed a self test");
         }
@@ -573,15 +558,13 @@ bool TestEncryptors()
     {
         for (unsigned int i=0; i<ENCRYPT_MAC_COUNT; ++i)
         {
+            const unsigned int runt = LegacyDecryptorWithMAC::SALTLENGTH + LegacyDecryptorWithMAC::KEYLENGTH;
             std::string pwd, src, dest, rec;
-            unsigned int len = GlobalRNG().GenerateWord32(16, 0xfff);
+            unsigned int len = GlobalRNG().GenerateWord32(runt, 0xfff);
+            unsigned int plen = GlobalRNG().GenerateWord32(0, 32);
 
-            src.resize(len);
-            GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&src[0]), src.size());
-
-            HexEncoder encoder(new StringSink(pwd));
-            encoder.Put(reinterpret_cast<byte*>(&src[0]), src.length()/4);
-            encoder.MessageEnd();
+            RandomNumberSource(GlobalRNG(), len, true, new StringSink(src));
+            RandomNumberSource(GlobalRNG(), plen, true, new HexEncoder(new StringSink(pwd)));
 
             StringSource(src, true, new LegacyEncryptorWithMAC(pwd.c_str(), new StringSink(dest)));
             StringSource(dest, true, new LegacyDecryptorWithMAC(pwd.c_str(), new StringSink(rec)));
@@ -614,7 +597,7 @@ bool TestEncryptors()
                 // undo previous tamper
                 dest[LegacyEncryptorWithMAC::SALTLENGTH+LegacyEncryptorWithMAC::KEYLENGTH/2] ^= 0x01;
                 // tamper encrypted data
-                dest[dest.length()-2] ^= 0x01;
+                dest[dest.size()-2] ^= 0x01;
                 StringSource(dest, true, new LegacyDecryptorWithMAC(pwd.c_str(), new StringSink(rec)));
                 std::cout << "FAILED:  LegacyEncryptorWithMAC failed to detect a tampered data\n";
                 fail4 = true;
@@ -649,11 +632,10 @@ bool TestSharing()
     for (unsigned int shares=3; shares<INFORMATION_SHARES; ++shares)
     {
         std::string message;
-        unsigned int len = GlobalRNG().GenerateWord32(0, 0xff);
+        unsigned int len = GlobalRNG().GenerateWord32(4, 0xff);
         unsigned int threshold = GlobalRNG().GenerateWord32(2, shares-1);
 
-        message.resize(len);
-        GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&message[0]), message.size());
+        RandomNumberSource(GlobalRNG(), len, true, new StringSink(message));
 
         ChannelSwitch *channelSwitch = NULLPTR;
         StringSource source(message, false, new InformationDispersal(threshold, shares, channelSwitch = new ChannelSwitch));
@@ -720,11 +702,10 @@ bool TestSharing()
     {
 
         std::string message;
-        unsigned int len = GlobalRNG().GenerateWord32(0, 0xff);
+        unsigned int len = GlobalRNG().GenerateWord32(4, 0xff);
         unsigned int threshold = GlobalRNG().GenerateWord32(2, shares-1);
 
-        message.resize(len);
-        GlobalRNG().GenerateBlock(reinterpret_cast<byte*>(&message[0]), message.size());
+        RandomNumberSource(GlobalRNG(), len, true, new StringSink(message));
 
         ChannelSwitch *channelSwitch = NULLPTR;
         StringSource source(message, false, new SecretSharing(GlobalRNG(), threshold, shares, channelSwitch = new ChannelSwitch));
@@ -2489,9 +2470,9 @@ bool TestHuffmanCodes()
             byte data1[0xfff];  // Place on stack, avoid new
             unsigned int data2[0xff];
 
-            unsigned int len1 = GlobalRNG().GenerateWord32(0, 0xfff);
+            unsigned int len1 = GlobalRNG().GenerateWord32(4, 0xfff);
             GlobalRNG().GenerateBlock(data1, len1);
-            unsigned int len2 = GlobalRNG().GenerateWord32(0, 0xff);
+            unsigned int len2 = GlobalRNG().GenerateWord32(4, 0xff);
             GlobalRNG().GenerateBlock((byte*)data2, len2*sizeof(unsigned int));
 
             ArraySource source(data1, len1, false);

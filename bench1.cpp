@@ -15,6 +15,8 @@
 #include "smartptr.h"
 #include "cpu.h"
 #include "drbg.h"
+#include "rdrand.h"
+#include "padlkrng.h"
 
 #if CRYPTOPP_MSC_VERSION
 # pragma warning(disable: 4355)
@@ -373,7 +375,7 @@ void Benchmark(Test::TestClass suites, double t, double hertz)
 
 	g_testBegin = std::time(NULLPTR);
 
-	if (static_cast<int>(suites) > 256 || static_cast<int>(suites) == 0)
+	if (static_cast<int>(suites) == 0 || static_cast<int>(suites) > TestLast)
 		suites = Test::All;
 
 	// Unkeyed algorithms
@@ -383,22 +385,8 @@ void Benchmark(Test::TestClass suites, double t, double hertz)
 		Benchmark1(t, hertz);
 	}
 
-	// Shared key algorithms (MACs)
-	if (suites & Test::SharedKeyMAC)
-	{
-		std::cout << "\n<BR>";
-		Benchmark2(t, hertz);
-	}
-
-	// Shared key algorithms (stream ciphers)
-	if (suites & Test::SharedKeyStream)
-	{
-		std::cout << "\n<BR>";
-		Benchmark2(t, hertz);
-	}
-
-	// Shared key algorithms (block ciphers)
-	if (suites & Test::SharedKeyBlock)
+	// Shared key algorithms
+	if (suites & Test::SharedKey)
 	{
 		std::cout << "\n<BR>";
 		Benchmark2(t, hertz);
@@ -453,6 +441,10 @@ void Benchmark1(double t, double hertz)
 		BenchMarkByNameKeyLess<RandomNumberGenerator>("AutoSeededX917RNG(AES)");
 #endif
 		BenchMarkByNameKeyLess<RandomNumberGenerator>("MT19937");
+#if (CRYPTOPP_BOOL_X86)
+		if (HasPadlockRNG())
+			BenchMarkByNameKeyLess<RandomNumberGenerator>("PadlockRNG");
+#endif
 #if (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64)
 		if (HasRDRAND())
 			BenchMarkByNameKeyLess<RandomNumberGenerator>("RDRAND");
@@ -520,11 +512,11 @@ void Benchmark2(double t, double hertz)
 
 	std::cout << "\n<TBODY style=\"background: white;\">";
 	{
-#if CRYPTOPP_BOOL_AESNI_INTRINSICS_AVAILABLE
+#if CRYPTOPP_AESNI_AVAILABLE
 		if (HasCLMUL())
 			BenchMarkByName2<AuthenticatedSymmetricCipher, MessageAuthenticationCode>("AES/GCM", 0, "GMAC(AES)");
 		else
-#elif CRYPTOPP_BOOL_ARM_PMULL_AVAILABLE
+#elif CRYPTOPP_ARM_PMULL_AVAILABLE
 		if (HasPMULL())
 			BenchMarkByName2<AuthenticatedSymmetricCipher, MessageAuthenticationCode>("AES/GCM", 0, "GMAC(AES)");
 		else
@@ -537,6 +529,7 @@ void Benchmark2(double t, double hertz)
 		BenchMarkByName<MessageAuthenticationCode>("VMAC(AES)-64");
 		BenchMarkByName<MessageAuthenticationCode>("VMAC(AES)-128");
 		BenchMarkByName<MessageAuthenticationCode>("HMAC(SHA-1)");
+		BenchMarkByName<MessageAuthenticationCode>("HMAC(SHA-256)");
 		BenchMarkByName<MessageAuthenticationCode>("Two-Track-MAC");
 		BenchMarkByName<MessageAuthenticationCode>("CMAC(AES)");
 		BenchMarkByName<MessageAuthenticationCode>("DMAC(AES)");
@@ -608,11 +601,11 @@ void Benchmark2(double t, double hertz)
 
 	std::cout << "\n<TBODY style=\"background: yellow;\">";
 	{
-#if CRYPTOPP_BOOL_AESNI_INTRINSICS_AVAILABLE
+#if CRYPTOPP_AESNI_AVAILABLE
 		if (HasCLMUL())
 			BenchMarkByName2<AuthenticatedSymmetricCipher, AuthenticatedSymmetricCipher>("AES/GCM", 0, "AES/GCM");
 		else
-#elif CRYPTOPP_BOOL_ARM_PMULL_AVAILABLE
+#elif CRYPTOPP_ARM_PMULL_AVAILABLE
 		if (HasPMULL())
 			BenchMarkByName2<AuthenticatedSymmetricCipher, AuthenticatedSymmetricCipher>("AES/GCM", 0, "AES/GCM");
 		else

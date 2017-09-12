@@ -25,6 +25,7 @@
 #include "drbg.h"
 #include "mersenne.h"
 #include "rdrand.h"
+#include "padlkrng.h"
 
 #include "modes.h"
 #include "aes.h"
@@ -57,8 +58,8 @@ void RegisterFactories(Test::TestClass suites)
 		RegisterFactories1();
 
 	if ((suites & Test::SharedKeyMAC) == Test::SharedKeyMAC ||
-		(suites & Test::SharedKeyMAC) == Test::SharedKeyStream ||
-		(suites & Test::SharedKeyMAC) == Test::SharedKeyBlock)
+		(suites & Test::SharedKeyStream) == Test::SharedKeyStream ||
+		(suites & Test::SharedKeyBlock) == Test::SharedKeyBlock)
 		RegisterFactories2();
 
 	if ((suites & Test::PublicKey) == Test::PublicKey)
@@ -109,6 +110,10 @@ void RegisterFactories1()
 	RegisterDefaultFactoryFor<RandomNumberGenerator, AutoSeededX917RNG<AES> >();
 #endif
 	RegisterDefaultFactoryFor<RandomNumberGenerator, MT19937>();
+#if (CRYPTOPP_BOOL_X86)
+	if (HasPadlockRNG())
+		RegisterDefaultFactoryFor<RandomNumberGenerator, PadlockRNG>();
+#endif
 #if (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64)
 	if (HasRDRAND())
 		RegisterDefaultFactoryFor<RandomNumberGenerator, RDRAND>();

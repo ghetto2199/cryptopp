@@ -6,6 +6,7 @@
 #include "dll.h"
 #include "config.h"
 #include "iterhash.h"
+#include "pkcspad.h"
 
 // Cast from FARPROC to funcptr with args, http://stackoverflow.com/q/4192058/608639
 #pragma warning(disable: 4191)
@@ -121,7 +122,7 @@ static void SetNewAndDeleteFunctionPointers()
 			return;
 	}
 
-	OutputDebugString("Crypto++ DLL was not able to obtain new and delete function pointers.\n");
+	OutputDebugStringA("Crypto++ DLL was not able to obtain new and delete function pointers.\n");
 	throw 0;
 }
 

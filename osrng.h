@@ -35,7 +35,7 @@ public:
 #ifdef CRYPTOPP_WIN32_AVAILABLE
 //! \class MicrosoftCryptoProvider
 //! \brief Wrapper for Microsoft crypto service provider
-//! \sa \def USE_MS_CRYPTOAPI, \def USE_MS_CNGAPI, \def WORKAROUND_MS_BUG_Q258000
+//! \sa \def USE_MS_CRYPTOAPI, \def USE_MS_CNGAPI
 class CRYPTOPP_DLL MicrosoftCryptoProvider
 {
 public:
@@ -115,6 +115,10 @@ protected:
 //! \class BlockingRng
 //! \brief Wrapper class for /dev/random and /dev/srandom
 //! \details Encapsulates /dev/random on Linux, OS X and Unix; and /dev/srandom on the BSDs.
+//! \note On Linux the /dev/random interface is effectively deprecated. According to the
+//!   Kernel Crypto developers, /dev/urandom or getrandom(2) should be used instead. Also
+//!   see <A HREF="https://lkml.org/lkml/2017/7/20/993">[RFC PATCH v12 3/4] Linux Random
+//!   Number Generator</A> on the kernel-crypto mailing list.
 class CRYPTOPP_DLL BlockingRng : public RandomNumberGenerator
 {
 public:

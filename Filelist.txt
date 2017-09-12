@@ -10,7 +10,9 @@ algparam.cpp
 algparam.h
 arc4.cpp
 arc4.h
+ariatab.cpp
 aria.cpp
+aria-simd.cpp
 aria.h
 argnames.h
 asn.cpp
@@ -29,6 +31,7 @@ bench1.cpp
 bench2.cpp
 bfinit.cpp
 blake2.cpp
+blake2-simd.cpp
 blake2.h
 blowfish.cpp
 blowfish.h
@@ -53,6 +56,7 @@ config.h
 cpu.cpp
 cpu.h
 crc.cpp
+crc-simd.cpp
 crc.h
 cryptdll.vcxproj
 cryptdll.vcxproj.filters
@@ -61,6 +65,7 @@ cryptest.sln
 cryptest.vcxproj
 cryptest.vcxproj.user
 cryptest.vcxproj.filters
+cryptest.mapfile
 cryptest.nmake
 cryptlib.cpp
 cryptlib.h
@@ -115,6 +120,7 @@ fips140.h
 fipsalgt.cpp
 fipstest.cpp
 fltrimpl.h
+gcm-simd.cpp
 gcm.cpp
 gcm.h
 gf256.cpp
@@ -177,6 +183,7 @@ mqv.cpp
 mqv.h
 nbtheory.cpp
 nbtheory.h
+neon-simd.cpp
 network.cpp
 network.h
 nr.h
@@ -186,6 +193,8 @@ oids.h
 osrng.cpp
 osrng.h
 ossig.h
+padlkrng.cpp
+padlkrng.h
 panama.cpp
 panama.h
 pch.cpp
@@ -196,6 +205,7 @@ poly1305.cpp
 poly1305.h
 polynomi.cpp
 polynomi.h
+ppc-simd.cpp
 pssr.cpp
 pssr.h
 pubkey.cpp
@@ -225,6 +235,7 @@ regtest2.cpp
 regtest3.cpp
 resource.h
 rijndael.cpp
+rijndael-simd.cpp
 rijndael.h
 ripemd.cpp
 ripemd.h
@@ -248,10 +259,12 @@ serpent.cpp
 serpent.h
 serpentp.h
 sha.cpp
+sha-simd.cpp
 sha.h
 sha3.cpp
 sha3.h
 shacal2.cpp
+shacal2-simd.cpp
 shacal2.h
 shark.cpp
 shark.h

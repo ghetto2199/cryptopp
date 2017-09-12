@@ -13,7 +13,7 @@
 # undef CRYPTOPP_X86_ASM_AVAILABLE
 # undef CRYPTOPP_X32_ASM_AVAILABLE
 # undef CRYPTOPP_X64_ASM_AVAILABLE
-# undef CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE
+# undef CRYPTOPP_SSE2_ASM_AVAILABLE
 #endif
 
 #if CRYPTOPP_MSC_VERSION
@@ -69,8 +69,8 @@ void VMAC_Base::UncheckedSetKey(const byte *userKey, unsigned int keylength, con
 	cipher.SetKey(userKey, keylength, params);
 	const unsigned int blockSize = cipher.BlockSize();
 	const unsigned int blockSizeInWords = blockSize / sizeof(word64);
-	SecBlock<word64> out(blockSizeInWords);
-	SecByteBlock in;
+	SecBlock<word64, AllocatorWithCleanup<word64, true> > out(blockSizeInWords);
+	AlignedSecByteBlock in;
 	in.CleanNew(blockSize);
 	size_t i;
 
@@ -161,13 +161,13 @@ void VMAC_Base::HashEndianCorrectedBlock(const word64 *data)
 unsigned int VMAC_Base::OptimalDataAlignment() const
 {
 	return
-#if CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE || defined(CRYPTOPP_X64_MASM_AVAILABLE)
+#if CRYPTOPP_SSE2_ASM_AVAILABLE || defined(CRYPTOPP_X64_MASM_AVAILABLE)
 		HasSSE2() ? 16 :
 #endif
 		GetCipher().OptimalDataAlignment();
 }
 
-#if CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE && (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32)
+#if CRYPTOPP_SSE2_ASM_AVAILABLE && (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32)
 #if CRYPTOPP_MSC_VERSION
 # pragma warning(disable: 4731)	// frame pointer register 'ebp' modified by inline assembly code
 #endif
@@ -800,7 +800,7 @@ void VMAC_Base::VHASH_Update_Template(const word64 *data, size_t blocksRemaining
 
 inline void VMAC_Base::VHASH_Update(const word64 *data, size_t blocksRemainingInWord64)
 {
-#if CRYPTOPP_BOOL_SSE2_ASM_AVAILABLE && (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32)
+#if CRYPTOPP_SSE2_ASM_AVAILABLE && (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32)
 	if (HasSSE2())
 	{
 		VHASH_Update_SSE2(data, blocksRemainingInWord64, 0);

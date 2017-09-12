@@ -30,7 +30,7 @@ public:
 };
 
 //! \class AlgorithmImpl
-//! \brief Base class for identifying alogorithm
+//! \brief Base class information
 //! \tparam BASE an Algorithm derived class
 //! \tparam ALGORITHM_INFO an Algorithm derived class
 //! \details AlgorithmImpl provides StaticAlgorithmName from the template parameter BASE
@@ -38,7 +38,15 @@ template <class BASE, class ALGORITHM_INFO=BASE>
 class CRYPTOPP_NO_VTABLE AlgorithmImpl : public BASE
 {
 public:
+	//! \brief The algorithm name
+	//! \returns the algorithm name
+	//! \details StaticAlgorithmName returns the algorithm's name as a static member function.
+	//!    The name is taken from information provided by BASE.
 	static std::string CRYPTOPP_API StaticAlgorithmName() {return ALGORITHM_INFO::StaticAlgorithmName();}
+	//! \brief The algorithm name
+	//! \returns the algorithm name
+	//! \details AlgorithmName returns the algorithm's name as a member function.
+	//!    The name is is acquired by calling StaticAlgorithmName.
 	std::string AlgorithmName() const {return ALGORITHM_INFO::StaticAlgorithmName();}
 };
 
@@ -303,7 +311,6 @@ private:
 
 //! \class Store
 //! \brief Acts as a Source for pre-existing, static data
-//! \tparam T BufferedTransformation that only contains pre-existing data as "output"
 class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE Store : public AutoSignaling<InputRejecting<BufferedTransformation> >
 {
 public:
@@ -347,7 +354,6 @@ public:
 
 //! \class BitBucket
 //! \brief Acts as an input discarding Filter or Sink
-//! \tparam T the class or type
 //! \details The BitBucket discards all input and returns 0 to the caller
 //!   to indicate all data was processed.
 class CRYPTOPP_DLL BitBucket : public Bufferless<Sink>

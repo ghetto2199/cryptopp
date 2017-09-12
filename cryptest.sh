@@ -69,15 +69,32 @@ unset MallocScribble MallocPreScribble MallocGuardEdges
 # Setup tools and platforms
 
 GREP=grep
-EGREP=egrep
 SED=sed
 AWK=awk
+MAKE=make
 
-# Code generation tests
 DISASS=objdump
 DISASSARGS=("--disassemble")
 
+# Fixup, Solaris and friends
+if [[ (-d /usr/xpg4/bin) ]]; then
+	SED=/usr/xpg4/bin/sed
+	AWK=/usr/xpg4/bin/awk
+	GREP=/usr/xpg4/bin/grep
+elif [[ (-d /usr/bin/posix) ]]; then
+	SED=/usr/bin/posix/sed
+	AWK=/usr/bin/posix/awk
+	GREP=/usr/bin/posix/grep
+fi
+
+# Fixup, Solaris and BSDs
+GMAKE=$(which gmake 2>/dev/null | "$GREP" -v "no gmake" | head -1)
+if [[ ! -z "$GMAKE" ]]; then
+	MAKE=$GMAKE
+fi
+
 THIS_SYSTEM=$(uname -s 2>&1)
+IS_AIX=$(echo -n "$THIS_SYSTEM" | "$GREP" -i -c aix)
 IS_DARWIN=$(echo -n "$THIS_SYSTEM" | "$GREP" -i -c darwin)
 IS_LINUX=$(echo -n "$THIS_SYSTEM" | "$GREP" -i -c linux)
 IS_CYGWIN=$(echo -n "$THIS_SYSTEM" | "$GREP" -i -c cygwin)
@@ -93,37 +110,17 @@ IS_FEDORA=$(lsb_release -a 2>&1 | "$GREP" -i -c fedora)
 IS_UBUNTU=$(lsb_release -a 2>&1 | "$GREP" -i -c ubuntu)
 
 THIS_MACHINE=$(uname -m 2>&1)
-IS_X86=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "(i386|i486|i686|i686)")
-IS_X64=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "(amd64|x86_64)")
-IS_PPC=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "(Power|PPC)")
-IS_ARM32=$(echo -n "$THIS_MACHINE" | "$GREP" -v "64" | "$EGREP" -i -c "(arm|aarch32)")
-IS_ARM64=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "(arm64|aarch64)")
-IS_S390=$(echo -n "$THIS_MACHINE" | "$EGREP" -i -c "s390")
+IS_X86=$(echo -n "$THIS_MACHINE" | "$GREP" -i -c -E "(i386|i486|i686|i686)")
+IS_X64=$(echo -n "$THIS_MACHINE" | "$GREP" -i -c -E "(amd64|x86_64)")
+IS_PPC32=$(echo -n "$THIS_MACHINE" | "$GREP" -v "64" | "$GREP" -i -c -E "(Power|PPC)")
+IS_PPC64=$(echo -n "$THIS_MACHINE" | "$GREP" -i -c -E "(Power64|PPC64)")
+IS_ARM32=$(echo -n "$THIS_MACHINE" | "$GREP" -v "64" | "$GREP" -i -c -E "(arm|aarch32)")
+IS_ARM64=$(echo -n "$THIS_MACHINE" | "$GREP" -i -c -E  "(arm64|aarch64)")
+IS_S390=$(echo -n "$THIS_MACHINE" | "$GREP" -i -c "s390")
 IS_X32=0
 
 # Fixup
 if [[ "$IS_SOLARIS" -ne "0" ]]; then
-	IS_X64=$(isainfo 2>/dev/null | "$GREP" -i -c "amd64")
-	if [[ "$IS_X64" -ne "0" ]]; then
-		IS_X86=0
-	fi
-
-	# Need something more powerful than the Posix versions
-	if [[ (-e "/usr/gnu/bin/grep") ]]; then
-		GREP=/usr/gnu/bin/grep;
-	fi
-	if [[ (-e "/usr/gnu/bin/egrep") ]]; then
-		EGREP=/usr/gnu/bin/egrep;
-	fi
-	if [[ (-e "/usr/gnu/bin/sed") ]]; then
-		SED=/usr/gnu/bin/sed;
-	fi
-	if [[ (-e "/usr/gnu/bin/awk") ]]; then
-		AWK=/usr/gnu/bin/awk;
-	else
-		AWK=nawk;
-	fi
-
 	DISASS=dis
 	DISASSARGS=()
 fi
@@ -132,18 +129,6 @@ fi
 if [[ "$IS_DARWIN" -ne 0 ]]; then
 	DISASS=otool
 	DISASSARGS=("-tV")
-fi
-
-# Fixup
-if [[ ("$IS_FREEBSD" -ne "0" || "$IS_OPENBSD" -ne "0" || "$IS_NETBSD" -ne "0" || "$IS_DRAGONFLY" -ne "0") ]]; then
-	MAKE=gmake
-elif [[ ("$IS_SOLARIS" -ne "0") ]]; then
-	MAKE=$(which gmake 2>/dev/null | "$GREP" -v "no gmake" | head -1)
-	if [[ (-z "$MAKE") && (-e "/usr/sfw/bin/gmake") ]]; then
-		MAKE=/usr/sfw/bin/gmake
-	fi
-else
-	MAKE=make
 fi
 
 # CPU features and flags
@@ -170,13 +155,13 @@ fi
 for ARG in "$@"
 do
 	# Recognize "fast" and "quick", which does not perform tests that take more time to execute
-    if [[ ($("$EGREP" -ix "fast" <<< "$ARG") || $("$EGREP" -ix "quick" <<< "$ARG")) ]]; then
+    if [[ ($("$GREP" -ix "fast" <<< "$ARG") || $("$GREP" -ix "quick" <<< "$ARG")) ]]; then
 		HAVE_VALGRIND=0
 		WANT_BENCHMARKS=0
 	# Recognize "farm" and "nice", which uses 1/2 the CPU cores in accordance with GCC Compile Farm policy
-	elif [[ ($("$EGREP" -ix "farm" <<< "$ARG") || $("$EGREP" -ix "nice" <<< "$ARG")) ]]; then
+	elif [[ ($("$GREP" -ix "farm" <<< "$ARG") || $("$GREP" -ix "nice" <<< "$ARG")) ]]; then
 		WANT_NICE=1
-	elif [[ ($("$EGREP" -ix "orig" <<< "$ARG") || $("$EGREP" -ix "original" <<< "$ARG") || $("$EGREP" -ix "config.h" <<< "$ARG")) ]]; then
+	elif [[ ($("$GREP" -ix "orig" <<< "$ARG") || $("$GREP" -ix "original" <<< "$ARG") || $("$GREP" -ix "config.h" <<< "$ARG")) ]]; then
 		git checkout config.h > /dev/null 2>&1
 	else
 		echo "Unknown option $ARG"
@@ -217,32 +202,33 @@ if [[ ((-z "$CXX") || ("$CXX" == "gcc")) ]]; then
 	fi
 fi
 
-SUN_COMPILER=$("$CXX" -V 2>&1 | "$EGREP" -i -c "CC: (Sun|Studio)")
-GCC_COMPILER=$("$CXX" --version 2>&1 | "$GREP" -i -v "clang" | "$EGREP" -i -c "(gcc|g\+\+)")
-INTEL_COMPILER=$("$CXX" --version 2>&1 | "$EGREP" -i -c "\(icc\)")
-MACPORTS_COMPILER=$("$CXX" --version 2>&1 | "$EGREP" -i -c "MacPorts")
-CLANG_COMPILER=$("$CXX" --version 2>&1 | "$EGREP" -i -c "clang")
+SUN_COMPILER=$("$CXX" -V 2>&1 | "$GREP" -i -c -E "CC: (Sun|Studio)")
+GCC_COMPILER=$("$CXX" --version 2>&1 | "$GREP" -i -v "clang" | "$GREP" -i -c -E "(gcc|g\+\+)")
+XLC_COMPILER=$("$CXX" -qversion 2>&1 | "$GREP" -i -c "IBM XL")
+INTEL_COMPILER=$("$CXX" --version 2>&1 | "$GREP" -i -c "\(icc\)")
+MACPORTS_COMPILER=$("$CXX" --version 2>&1 | "$GREP" -i -c "MacPorts")
+CLANG_COMPILER=$("$CXX" --version 2>&1 | "$GREP" -i -c "clang")
 
 if [[ ("$SUN_COMPILER" -eq "0") ]]; then
-	AMD64=$("$CXX" -dM -E - </dev/null 2>/dev/null | "$EGREP" -c "(__x64_64__|__amd64__)")
-	ILP32=$("$CXX" -dM -E - </dev/null 2>/dev/null | "$EGREP" -c "(__ILP32__|__ILP32)")
+	AMD64=$("$CXX" -dM -E - </dev/null 2>/dev/null | "$GREP" -i -c -E "(__x64_64__|__amd64__)")
+	ILP32=$("$CXX" -dM -E - </dev/null 2>/dev/null | "$GREP" -i -c -E "(__ILP32__|__ILP32)")
 	if [[ ("$AMD64" -ne "0") && ("$ILP32" -ne "0") ]]; then
 		IS_X32=1
 	fi
 fi
 
 # Now that the compiler is fixed, determine the compiler version for fixups
-CLANG_37_OR_ABOVE=$("$CXX" -v 2>&1 | "$EGREP" -i -c 'clang version (3\.[7-9]|[4-9]\.[0-9])')
-GCC_70_OR_ABOVE=$("$CXX" -v 2>&1 | "$EGREP" -i -c 'gcc version (7\.[0-9]|[8-9])')
-GCC_60_OR_ABOVE=$("$CXX" -v 2>&1 | "$EGREP" -i -c 'gcc version (6\.[0-9]|[7-9])')
-GCC_51_OR_ABOVE=$("$CXX" -v 2>&1 | "$EGREP" -i -c 'gcc version (5\.[1-9]|[6-9])')
-GCC_48_COMPILER=$("$CXX" -v 2>&1 | "$EGREP" -i -c 'gcc version 4\.8')
-GCC_49_COMPILER=$("$CXX" -v 2>&1 | "$EGREP" -i -c 'gcc version 4\.9')
-GCC_49_OR_ABOVE=$("$CXX" -v 2>&1 | "$EGREP" -i -c 'gcc version (4\.9|[5-9]\.[0-9])')
-SUNCC_510_OR_ABOVE=$("$CXX" -V 2>&1 | "$EGREP" -c "CC: (Sun|Studio) .* (5\.1[0-9]|5\.[2-9]|[6-9]\.)")
-SUNCC_511_OR_ABOVE=$("$CXX" -V 2>&1 | "$EGREP" -c "CC: (Sun|Studio) .* (5\.1[1-9]|5\.[2-9]|[6-9]\.)")
-SUNCC_512_OR_ABOVE=$("$CXX" -V 2>&1 | "$EGREP" -c "CC: (Sun|Studio) .* (5\.1[2-9]|5\.[2-9]|[6-9]\.)")
-SUNCC_513_OR_ABOVE=$("$CXX" -V 2>&1 | "$EGREP" -c "CC: (Sun|Studio) .* (5\.1[3-9]|5\.[2-9]|[6-9]\.)")
+CLANG_37_OR_ABOVE=$("$CXX" -v 2>&1 | "$GREP" -i -c -E 'clang version (3\.[7-9]|[4-9]\.[0-9])')
+GCC_70_OR_ABOVE=$("$CXX" -v 2>&1 | "$GREP" -i -c -E 'gcc version (7\.[0-9]|[8-9])')
+GCC_60_OR_ABOVE=$("$CXX" -v 2>&1 | "$GREP" -i -c -E 'gcc version (6\.[0-9]|[7-9])')
+GCC_51_OR_ABOVE=$("$CXX" -v 2>&1 | "$GREP" -i -c -E 'gcc version (5\.[1-9]|[6-9])')
+GCC_48_COMPILER=$("$CXX" -v 2>&1 | "$GREP" -i -c -E 'gcc version 4\.8')
+GCC_49_COMPILER=$("$CXX" -v 2>&1 | "$GREP" -i -c -E 'gcc version 4\.9')
+GCC_49_OR_ABOVE=$("$CXX" -v 2>&1 | "$GREP" -i -c -E 'gcc version (4\.9|[5-9]\.[0-9])')
+SUNCC_510_OR_ABOVE=$("$CXX" -V 2>&1 | "$GREP" -c -E "CC: (Sun|Studio) .* (5\.1[0-9]|5\.[2-9]|[6-9]\.)")
+SUNCC_511_OR_ABOVE=$("$CXX" -V 2>&1 | "$GREP" -c -E "CC: (Sun|Studio) .* (5\.1[1-9]|5\.[2-9]|[6-9]\.)")
+SUNCC_512_OR_ABOVE=$("$CXX" -V 2>&1 | "$GREP" -c -E "CC: (Sun|Studio) .* (5\.1[2-9]|5\.[2-9]|[6-9]\.)")
+SUNCC_513_OR_ABOVE=$("$CXX" -V 2>&1 | "$GREP" -c -E "CC: (Sun|Studio) .* (5\.1[3-9]|5\.[2-9]|[6-9]\.)")
 
 # Fixup, bad code generation
 if [[ ("$SUNCC_510_OR_ABOVE" -ne "0") ]]; then
@@ -250,91 +236,95 @@ if [[ ("$SUNCC_510_OR_ABOVE" -ne "0") ]]; then
 	HAVE_OFAST=0
 fi
 
-if [[ (-z "$TMP") ]]; then
-	if [[ (-d "/tmp") ]]; then
-		TMP=/tmp
+# GCC compile farm is mounted RO
+if [[ (-z "$TMPDIR") ]]; then
+	if [[ (-d "/tmp") ]] && [[ `touch "/tmp/ok-to-delete" &>/dev/null` ]]; then
+		TMPDIR=/tmp
 	elif [[ (-d "/temp") ]]; then
-		TMP=/temp
+		TMPDIR=/temp
 	elif [[ (-d "$HOME/tmp") ]]; then
-		TMP="$HOME/tmp"
+		TMPDIR="$HOME/tmp"
 	else
-		echo "Please set TMP to a valid directory"
+		echo "Please set TMPDIR to a valid directory"
 		[[ "$0" = "$BASH_SOURCE" ]] && exit 1 || return 1
 	fi
 fi
+
+# Make temp if it does not exist
+mkdir -p "$TMPDIR" &>/dev/null
 
 # Sun Studio does not allow '-x c++'. Copy it here...
 rm -f adhoc.cpp > /dev/null 2>&1
 cp adhoc.cpp.proto adhoc.cpp
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_CXX17") ]]; then
 	HAVE_CXX17=0
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=c++17 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=c++17 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		HAVE_CXX17=1
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_GNU17") ]]; then
 	HAVE_GNU17=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=gnu++17 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=gnu++17 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		HAVE_GNU17=1
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_CXX14") ]]; then
 	HAVE_CXX14=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=c++14 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=c++14 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		HAVE_CXX14=1
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_GNU14") ]]; then
 	HAVE_GNU14=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=gnu++14 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=gnu++14 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		HAVE_GNU14=1
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_CXX11") ]]; then
 	HAVE_CXX11=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=c++11 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=c++11 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		HAVE_CXX11=1
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_GNU11") ]]; then
 	HAVE_GNU11=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=gnu++11 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=gnu++11 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		HAVE_GNU11=1
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_CXX03") ]]; then
 	HAVE_CXX03=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=c++03 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=c++03 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		HAVE_CXX03=1
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_GNU03") ]]; then
 	HAVE_GNU03=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=gnu++03 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -std=gnu++03 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		HAVE_GNU03=1
 	fi
@@ -342,13 +332,13 @@ fi
 
 # Use a fallback strategy so OPT_O0 can be used with DEBUG_CXXFLAGS
 OPT_O0=
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-"$CXX" -DCRYPTOPP_ADHOC_MAIN -O0 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+"$CXX" -DCRYPTOPP_ADHOC_MAIN -O0 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ ("$?" -eq "0") ]]; then
 	OPT_O0=-O0
 else
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO0 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO0 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		OPT_O0=-xO0
 	fi
@@ -356,13 +346,13 @@ fi
 
 # Use a fallback strategy so OPT_O1 can be used with VALGRIND_CXXFLAGS
 OPT_O1=
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-"$CXX" -DCRYPTOPP_ADHOC_MAIN -O1 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+"$CXX" -DCRYPTOPP_ADHOC_MAIN -O1 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ ("$?" -eq "0") ]]; then
 	OPT_O1=-O1
 else
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO1 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO1 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		OPT_O1=-xO1
 	fi
@@ -370,33 +360,29 @@ fi
 
 # Use a fallback strategy so OPT_O2 can be used with RELEASE_CXXFLAGS
 OPT_O2=
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-"$CXX" -DCRYPTOPP_ADHOC_MAIN -O2 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+"$CXX" -DCRYPTOPP_ADHOC_MAIN -O2 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ ("$?" -eq "0") ]]; then
 	OPT_O2=-O2
 else
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO2 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO2 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		OPT_O2=-xO2
 	fi
 fi
 
-if [[ (-z "$HAVE_O3") ]]; then
-	HAVE_O3=0
-	OPT_O3=
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -O3 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+# Use a fallback strategy so OPT_O3 can be used with RELEASE_CXXFLAGS
+OPT_O3=
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+"$CXX" -DCRYPTOPP_ADHOC_MAIN -O3 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+if [[ ("$?" -eq "0") ]]; then
+	OPT_O3=-O3
+else
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO3 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
-		HAVE_O3=1
-		OPT_O3=-O3
-	else
-		rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO3 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
-		if [[ ("$?" -eq "0") ]]; then
-			HAVE_O3=1
-			OPT_O3=-xO3
-		fi
+		OPT_O3=-xO3
 	fi
 fi
 
@@ -404,14 +390,14 @@ fi
 if [[ ( (-z "$HAVE_O5") && ("$CLANG_COMPILER" -eq "0") ) ]]; then
 	HAVE_O5=0
 	OPT_O5=
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -O5 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -O5 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		HAVE_O5=1
 		OPT_O5=-O5
 	else
-		rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO5 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -xO5 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ ("$?" -eq "0") ]]; then
 			HAVE_O5=1
 			OPT_O5=-xO5
@@ -423,8 +409,8 @@ fi
 if [[ (-z "$HAVE_OS") ]]; then
 	HAVE_OS=0
 	OPT_OS=
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -Os adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -Os adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		HAVE_OS=1
 		OPT_OS=-Os
@@ -435,8 +421,8 @@ fi
 if [[ (-z "$HAVE_OFAST") ]]; then
 	HAVE_OFAST=0
 	OPT_OFAST=
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -Ofast adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -Ofast adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		HAVE_OFAST=1
 		OPT_OFAST=-Ofast
@@ -445,13 +431,13 @@ fi
 
 # Use a fallback strategy so OPT_G2 can be used with RELEASE_CXXFLAGS
 OPT_G2=
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-"$CXX" -DCRYPTOPP_ADHOC_MAIN -g2 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+"$CXX" -DCRYPTOPP_ADHOC_MAIN -g2 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ ("$?" -eq "0") ]]; then
 	OPT_G2=-g2
 else
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -g adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -g adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		OPT_G2=-g
 	fi
@@ -459,13 +445,13 @@ fi
 
 # Use a fallback strategy so OPT_G3 can be used with DEBUG_CXXFLAGS
 OPT_G3=
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-"$CXX" -DCRYPTOPP_ADHOC_MAIN -g3 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+"$CXX" -DCRYPTOPP_ADHOC_MAIN -g3 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ ("$?" -eq "0") ]]; then
 	OPT_G3=-g3
 else
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -g adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -g adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		OPT_G3=-g
 	fi
@@ -473,23 +459,26 @@ fi
 
 # Cygwin and noisy compiles
 OPT_PIC=
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_PIC") ]]; then
 	HAVE_PIC=0
-	PIC_PROBLEMS=$("$CXX" -DCRYPTOPP_ADHOC_MAIN -fPIC adhoc.cpp -o "$TMP/adhoc.exe" 2>&1 | "$EGREP" -ic '(warning|error)')
+	PIC_PROBLEMS=$("$CXX" -DCRYPTOPP_ADHOC_MAIN -fPIC adhoc.cpp -o "$TMPDIR/adhoc.exe" 2>&1 | "$GREP" -i -c -E  '(warning|error)')
 	if [[ "$PIC_PROBLEMS" -eq "0" ]]; then
 		HAVE_PIC=1
 		OPT_PIC=-fPIC
+		if [[ ("$XLC_COMPILER" -eq "1") ]]; then
+			OPT_PIC=-qpic
+		fi
 	fi
 fi
 
 # GCC 4.8; Clang 3.4
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_UBSAN") ]]; then
 	HAVE_UBSAN=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -fsanitize=undefined adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -fsanitize=undefined adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
-		"$TMP/adhoc.exe" > /dev/null 2>&1
+		"$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ ("$?" -eq "0") ]]; then
 			HAVE_UBSAN=1
 		fi
@@ -497,12 +486,12 @@ if [[ (-z "$HAVE_UBSAN") ]]; then
 fi
 
 # GCC 4.8; Clang 3.4
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_ASAN") ]]; then
 	HAVE_ASAN=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -fsanitize=address adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -fsanitize=address adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
-		"$TMP/adhoc.exe" > /dev/null 2>&1
+		"$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ ("$?" -eq "0") ]]; then
 			HAVE_ASAN=1
 		fi
@@ -510,41 +499,41 @@ if [[ (-z "$HAVE_ASAN") ]]; then
 fi
 
 # GCC 6.0; maybe Clang
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_BSAN") ]]; then
 	HAVE_BSAN=0
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -fsanitize=bounds-strict adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -fsanitize=bounds-strict adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
-		"$TMP/adhoc.exe" > /dev/null 2>&1
+		"$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ ("$?" -eq "0") ]]; then
 			HAVE_BSAN=1
 		fi
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_OMP") ]]; then
 	HAVE_OMP=0
 	if [[ "$GCC_COMPILER" -ne "0" ]]; then
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -fopenmp -O3 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -fopenmp -O3 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 			HAVE_OMP=1
 			OMP_FLAGS=(-fopenmp -O3)
 		fi
 	elif [[ "$INTEL_COMPILER" -ne "0" ]]; then
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -openmp -O3 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -openmp -O3 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 			HAVE_OMP=1
 			OMP_FLAGS=(-openmp -O3)
 		fi
 	elif [[ "$CLANG_COMPILER" -ne "0" ]]; then
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -fopenmp=libomp -O3 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -fopenmp=libomp -O3 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 			HAVE_OMP=1
 			OMP_FLAGS=(-fopenmp=libomp -O3)
 		fi
 	elif [[ "$SUN_COMPILER" -ne "0" ]]; then
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -xopenmp=parallel -xO3 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -xopenmp=parallel -xO3 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 			HAVE_OMP=1
 			OMP_FLAGS=(-xopenmp=parallel -xO3)
@@ -552,33 +541,33 @@ if [[ (-z "$HAVE_OMP") ]]; then
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_INTEL_MULTIARCH") ]]; then
 	HAVE_INTEL_MULTIARCH=0
 	if [[ ("$IS_DARWIN" -ne "0") && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0") ]]; then
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -arch i386 -arch x86_64 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -arch i386 -arch x86_64 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 			HAVE_INTEL_MULTIARCH=1
 		fi
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_PPC_MULTIARCH") ]]; then
 	HAVE_PPC_MULTIARCH=0
-	if [[ ("$IS_DARWIN" -ne "0") && ("$IS_PPC" -ne "0") ]]; then
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -arch ppc -arch ppc64 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	if [[ ("$IS_DARWIN" -ne "0") && ("$IS_PPC32" -ne "0" || "$IS_PPC64" -ne "0") ]]; then
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -arch ppc -arch ppc64 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 			HAVE_PPC_MULTIARCH=1
 		fi
 	fi
 fi
 
-rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
+rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 if [[ (-z "$HAVE_X32") ]]; then
 	HAVE_X32=0
 	if [[ "$IS_X32" -ne "0" ]]; then
-		"$CXX" -DCRYPTOPP_ADHOC_MAIN -mx32 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -mx32 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 			HAVE_X32=1
 		fi
@@ -588,8 +577,8 @@ fi
 # Hit or miss, mostly hit
 if [[ (-z "$HAVE_NATIVE_ARCH") ]]; then
 	HAVE_NATIVE_ARCH=0
-	rm -f "$TMP/adhoc.exe" > /dev/null 2>&1
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -march=native adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	rm -f "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -march=native adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ ("$?" -eq "0") ]]; then
 		HAVE_NATIVE_ARCH=1
 	fi
@@ -601,9 +590,9 @@ if [[ (-z "$HAVE_LDGOLD") ]]; then
 	LD_GOLD=$(which ld.gold 2>&1 | "$GREP" -v "no ld.gold" | head -1)
 	ELF_FILE=$(which file 2>&1 | "$GREP" -v "no file" | head -1)
 	if [[ (! -z "$LD_GOLD") && (! -z "$ELF_FILE") ]]; then
-		LD_GOLD=$(file "$LD_GOLD" | cut -d":" -f 2 | "$EGREP" -i -c "elf")
+		LD_GOLD=$(file "$LD_GOLD" | cut -d":" -f 2 | "$GREP" -i -c "elf")
 		if [[ ("$LD_GOLD" -ne "0") ]]; then
-			"$CXX" -DCRYPTOPP_ADHOC_MAIN -fuse-ld=gold adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+			"$CXX" -DCRYPTOPP_ADHOC_MAIN -fuse-ld=gold adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 			if [[ "$?" -eq "0" ]]; then
 				HAVE_LDGOLD=1
 			fi
@@ -620,7 +609,7 @@ if [[ ("$IS_ARM32" -ne "0" || "$IS_ARM64" -ne "0") ]]; then
 	fi
 
 	if [[ (-z "$HAVE_ARMV8A" && ("$IS_ARM32" -ne "0" || "$IS_ARM64" -ne "0")) ]]; then
-		HAVE_ARMV8A=$(echo -n "$ARM_CPU_FLAGS" | "$EGREP" -i -c '(asimd|crc|crypto)')
+		HAVE_ARMV8A=$(echo -n "$ARM_CPU_FLAGS" | "$GREP" -i -c -E '(asimd|crc|crypto)')
 		if [[ ("$HAVE_ARMV8A" -gt "0") ]]; then HAVE_ARMV8A=1; fi
 	fi
 
@@ -654,7 +643,7 @@ if [[ ("$IS_ARM32" -ne "0" || "$IS_ARM64" -ne "0") ]]; then
 	fi
 
 	if [[ (-z "$HAVE_ARM_CRYPTO") ]]; then
-		HAVE_ARM_CRYPTO=$(echo -n "$ARM_CPU_FLAGS" | "$EGREP" -i -c '(aes|pmull|sha1|sha2)')
+		HAVE_ARM_CRYPTO=$(echo -n "$ARM_CPU_FLAGS" | "$GREP" -i -c -E '(aes|pmull|sha1|sha2)')
 		if [[ ("$HAVE_ARM_CRYPTO" -gt "0") ]]; then HAVE_ARM_CRYPTO=1; fi
 	fi
 
@@ -688,10 +677,10 @@ fi
 
 # Used to disassemble object modules so we can verify some aspects of code generation
 if [[ (-z "$HAVE_DISASS") ]]; then
-	echo "int main(int argc, char* argv[]) {return 0;}" > "$TMP/test.cc"
-	"$CXX" "$TMP/test.cc" -o "$TMP/test.exe" > /dev/null 2>&1
+	echo "int main(int argc, char* argv[]) {return 0;}" > "$TMPDIR/test.cc"
+	"$CXX" "$TMPDIR/test.cc" -o "$TMPDIR/test.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
-		"$DISASS" "${DISASSARGS[@]}" "$TMP/test.exe" > /dev/null 2>&1
+		"$DISASS" "${DISASSARGS[@]}" "$TMPDIR/test.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 			HAVE_DISASS=1
 		else
@@ -710,6 +699,23 @@ if [[ (-z "$WANT_BENCHMARKS") ]]; then
 	WANT_BENCHMARKS=1
 fi
 
+# IBM XL C/C++ compiler fixups. Not sure why it fails to return non-0 on failure...
+if [[ "$XLC_COMPILER" -ne "0" ]]; then
+	HAVE_CXX03=0
+	HAVE_GNU03=0
+	HAVE_CXX11=0
+	HAVE_GNU11=0
+	HAVE_CXX14=0
+	HAVE_GNU14=0
+	HAVE_CXX17=0
+	HAVE_GNU17=0
+	HAVE_OMP=0
+	HAVE_ASAN=0
+	HAVE_BSAN=0
+	HAVE_UBSAN=0
+	HAVE_LDGOLD=0
+fi
+
 ############################################
 # System information
 
@@ -724,10 +730,14 @@ elif [[ "$IS_SOLARIS" -ne "0" ]]; then
 	echo "IS_SOLARIS: $IS_SOLARIS" | tee -a "$TEST_RESULTS"
 elif [[ "$IS_DARWIN" -ne "0" ]]; then
 	echo "IS_DARWIN: $IS_DARWIN" | tee -a "$TEST_RESULTS"
+elif [[ "$IS_AIX" -ne "0" ]]; then
+	echo "IS_AIX: $IS_AIX" | tee -a "$TEST_RESULTS"
 fi
 
-if [[ "$IS_PPC" -ne "0" ]]; then
-	echo "IS_PPC: $IS_PPC" | tee -a "$TEST_RESULTS"
+if [[ "$IS_PPC64" -ne "0" ]]; then
+	echo "IS_PPC64: $IS_PPC64" | tee -a "$TEST_RESULTS"
+elif [[ "$IS_PPC32" -ne "0" ]]; then
+	echo "IS_PPC32: $IS_PPC32" | tee -a "$TEST_RESULTS"
 fi
 if [[ "$IS_ARM64" -ne "0" ]]; then
 	echo "IS_ARM64: $IS_ARM64" | tee -a "$TEST_RESULTS"
@@ -823,7 +833,7 @@ CPU_COUNT=1
 MEM_SIZE=512
 
 if [[ (-e "/proc/cpuinfo") && (-e "/proc/meminfo") ]]; then
-	CPU_COUNT=$(cat /proc/cpuinfo 2>&1 | "$GREP" -c '^processor')
+	CPU_COUNT=$(cat /proc/cpuinfo 2>&1 | "$GREP" -c -E '^processor')
 	MEM_SIZE=$(cat /proc/meminfo 2>&1 | "$GREP" "MemTotal" | "$AWK" '{print $2}')
 	MEM_SIZE=$(($MEM_SIZE/1024))
 elif [[ "$IS_DARWIN" -ne "0" ]]; then
@@ -833,6 +843,9 @@ elif [[ "$IS_DARWIN" -ne "0" ]]; then
 elif [[ "$IS_SOLARIS" -ne "0" ]]; then
 	CPU_COUNT=$(psrinfo 2>/dev/null | wc -l | "$AWK" '{print $1}')
 	MEM_SIZE=$(prtconf 2>/dev/null | "$GREP" Memory | "$AWK" '{print $3}')
+elif [[ "$IS_AIX" -ne "0" ]]; then
+	CPU_COUNT=$(bindprocessor -q 2>/dev/null | cut -f 2 -d ':' | wc -w | "$AWK" '{print $1}')
+	MEM_SIZE=$(prtconf -m 2>/dev/null | "$GREP" 'MB' | "$AWK" '{print $3; exit;}')
 fi
 
 # Benchmarks expect frequency in GiHz.
@@ -849,6 +862,9 @@ elif [[ "$IS_DARWIN" -ne "0" ]]; then
 	CPU_FREQ=$("$AWK" "BEGIN {print $CPU_FREQ/1024/1024/1024}")
 elif [[ "$IS_SOLARIS" -ne "0" ]]; then
 	CPU_FREQ=$(psrinfo -v 2>/dev/null | "$GREP" 'MHz' | "$AWK" '{print $6; exit;}')
+	CPU_FREQ=$("$AWK" "BEGIN {print $CPU_FREQ/1024}")
+elif [[ "$IS_AIX" -ne "0" ]]; then
+	CPU_FREQ=$(prtconf -s 2>/dev/null | "$GREP" 'MHz' | "$AWK" '{print $4; exit;}')
 	CPU_FREQ=$("$AWK" "BEGIN {print $CPU_FREQ/1024}")
 fi
 
@@ -894,6 +910,8 @@ fi
 
 if [[ ("$SUN_COMPILER" -ne "0") ]]; then
 	echo $("$CXX" -V 2>&1 | "$SED" 's|CC:|Compiler:|g' | head -1) | tee -a "$TEST_RESULTS"
+elif [[ ("$XLC_COMPILER" -ne "0") ]]; then
+	echo "Compiler:" $("$CXX" -qversion | head -1) | tee -a "$TEST_RESULTS"
 else
 	echo "Compiler:" $("$CXX" --version | head -1) | tee -a "$TEST_RESULTS"
 fi
@@ -907,156 +925,9 @@ echo "Pathname: $CXX_PATH" | tee -a "$TEST_RESULTS"
 
 # Calculate these once. They handle Clang, GCC, ICC, etc
 DEBUG_CXXFLAGS="-DDEBUG $OPT_G3 $OPT_O0"
-RELEASE_CXXFLAGS="-DNDEBUG $OPT_G2 $OPT_O2"
+RELEASE_CXXFLAGS="-DNDEBUG $OPT_G2 $OPT_O3"
 VALGRIND_CXXFLAGS="-DNDEBUG $OPT_G3 $OPT_O1"
-PLATFORM_CXXFLAGS=()
 WARNING_CXXFLAGS=()
-
-# Clang {3.4|3.5|3.6} only advertises SSE2, http://bugs.launchpad.net/ubuntu/+bug/1616723,
-#   http://bugs.launchpad.net/ubuntu/+bug/1616729 and http://bugs.launchpad.net/ubuntu/+bug/1616731
-if [[ (("$IS_X86" -ne "0" || "$IS_X64" -ne "0") && ("$CLANG_COMPILER" -ne "0" && "$CLANG_37_OR_ABOVE" -eq "0")) ]]; then
-
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sse2") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-msse2"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sse3") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-msse3"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "ssse3") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mssse3"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sse4.1") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-msse4.1"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sse4.2") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-msse4.2"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "aes") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-maes"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "pclmulqdq") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mpclmul"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "rdrand") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mrdrnd"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "rdseed") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mrdseed"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "movbe") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mmovbe"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "avx") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mavx"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "avx2") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mavx2"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "bmi") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mbmi"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "bmi2") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-mbmi2"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "adx") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-madx"); fi
-	if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sha_ni") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-msha"); fi
-fi
-
-# Solaris Studio 12.1/SunCC 5.10 (and above) compilers consume GCC inline assembly. However, the compiler does
-#   not declare the CPU features, even when using options like -native and -xarch=<feature>.
-if [[ ("$IS_X86" -ne "0" || "$IS_X64" -ne "0") && ("$IS_SOLARIS" -ne "0") && ("$SUNCC_510_OR_ABOVE" -ne "0") ]]; then
-	SUNCC_XARCH=
-	if [[ ("$SUNCC_511_OR_ABOVE" -ne "0") ]]; then
-		if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sse2") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__SSE2__"); SUNCC_XARCH=sse2; fi
-		if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sse3") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__SSE3__"); SUNCC_XARCH=ssse3; fi
-		if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "ssse3") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__SSSE3__"); SUNCC_XARCH=ssse3; fi
-		if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sse4.1") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__SSE4_1__"); SUNCC_XARCH=sse4_1; fi
-		if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "sse4.2") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__SSE4_2__"); SUNCC_XARCH=sse4_2; fi
-
-		# This should use SUNCC_512_OR_ABOVE, but SunCC 5.12 crashes with -xarch=aes.
-		if [[ ("$SUNCC_513_OR_ABOVE" -ne "0") ]]; then
-			if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "aes") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__AES__"); SUNCC_XARCH=aes; fi
-			if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "pclmulqdq") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__PCLMUL__"); SUNCC_XARCH=aes; fi
-
-			if [[ ("$SUNCC_513_OR_ABOVE" -ne "0") ]]; then
-				if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "rdrand") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__RDRND__"); SUNCC_XARCH=avx_i; fi
-				if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "rdseed") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__RDSEED__"); SUNCC_XARCH=avx_i; fi
-				if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "movbe") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__MOVBE__"); SUNCC_XARCH=avx; fi
-				if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "avx") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__AVX__"); SUNCC_XARCH=avx; fi
-				if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "avx2") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__AVX2__"); SUNCC_XARCH=avx2; fi
-				if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "bmi") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__BMI__"); SUNCC_XARCH=avx2; fi
-				if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "bmi2") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__BMI2__"); SUNCC_XARCH=avx2; fi
-
-				# SunCC 5.13 and "illegal use of -xarch option, illegal value ignored: avx2_i"
-				if [[ ("$SUNCC_514_OR_ABOVE" -ne "0") ]]; then
-					if [[ ($(echo -n "$X86_CPU_FLAGS" | "$GREP" -c "adx") -ne "0") ]]; then PLATFORM_CXXFLAGS+=("-D__ADX__"); SUNCC_XARCH=avx2_i; fi
-				fi
-			fi
-		fi
-	fi
-	PLATFORM_CXXFLAGS+=("-xarch=$SUNCC_XARCH")
-fi
-
-# Please, someone put an end to the madness of determining Features, FPU, ABI, hard floats and soft floats...
-if [[ ("$IS_ARM32" -ne "0" || "$IS_ARM64" -ne "0") ]]; then
-
-	if [[ (("$HAVE_ARMV7A" -ne "0") && ("$IS_ARM32" -ne "0")) ]]; then
-
-		PLATFORM_CXXFLAGS+=("-march=armv7-a")
-
-		# http://community.arm.com/groups/tools/blog/2013/04/15/arm-cortex-a-processors-and-gcc-command-lines
-		#  These may need more tuning. If it was easy to get the CPU model, like Cortex-A9, then we could
-		#  be fairly certain of the FPU and ABI flags. But we can't easily get a CPU name, so we suffer through it.
-		#  Also see http://lists.linaro.org/pipermail/linaro-toolchain/2016-July/005821.html
-		if [[ ("$HAVE_ARM_NEON" -ne "0" && "$CLANG_COMPILER" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=neon")
-		elif [[ ("$HAVE_ARM_NEON" -ne "0" && "$HAVE_ARM_VFPV4" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=neon-vfpv4")
-		elif [[ ("$HAVE_ARM_NEON" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=neon")
-		elif [[ ("$HAVE_ARM_VFPV3" -ne "0" || "$HAVE_ARM_VFPV4" -ne "0") && "$HAVE_ARM_VFPD32" -ne "0" ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=neon")
-		elif [[ ("$HAVE_ARM_VFPV5" -ne "0" && "$HAVE_ARM_VFPD32" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=fpv5")
-		elif [[ ("$HAVE_ARM_VFPV4" -ne "0" && "$HAVE_ARM_VFPD32" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=vfpv4")
-		elif [[ ("$HAVE_ARM_VFPV3" -ne "0" && "$HAVE_ARM_VFPD32" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=vfpv3")
-		elif [[ ("$HAVE_ARM_VFPV5" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=fpv5-d16")
-		elif [[ ("$HAVE_ARM_VFPV4" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=vfpv4-d16")
-		elif [[ ("$HAVE_ARM_VFPV3" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=vfpv3-d16")
-		fi
-
-	elif [[ (("$HAVE_ARMV8A" -ne "0") && ("$IS_ARM64" -ne "0")) ]]; then
-
-		if [[ ("$HAVE_ARM_CRC" -ne "0" && "$HAVE_ARM_CRYPTO" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-march=armv8-a+crc+crypto")
-		elif [[ ("$HAVE_ARM_CRC" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-march=armv8-a+crc")
-		elif [[ ("$HAVE_ARM_CRYPTO" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-march=armv8-a+crypto")
-		else
-			PLATFORM_CXXFLAGS+=("-march=armv8-a")
-		fi
-
-	elif [[ (("$HAVE_ARMV8A" -ne "0") && ("$IS_ARM32" -ne "0")) ]]; then
-
-		if [[ ("$HAVE_ARM_CRC" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-march=armv8-a+crc")
-		else
-			PLATFORM_CXXFLAGS+=("-march=armv8-a")
-		fi
-
-		if [[ ("$CLANG_COMPILER" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=neon")
-		elif [[ ("$HAVE_ARM_CRYPTO" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfpu=crypto-neon-fp-armv8")
-		else
-			PLATFORM_CXXFLAGS+=("-mfpu=neon-fp-armv8")
-		fi
-	fi
-
-	# Soft/Hard floats only apply to 32-bit ARM
-	# http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.faqs/ka16242.html
-	if [[ ("$IS_ARM32" -ne "0") ]]; then
-		ARM_HARD_FLOAT=$("$CXX" -v 2>&1 | "$GREP" 'Target' | "$EGREP" -i -c '(armhf|gnueabihf)')
-		if [[ ("$ARM_HARD_FLOAT" -ne "0") ]]; then
-			PLATFORM_CXXFLAGS+=("-mfloat-abi=hard")
-		else
-			PLATFORM_CXXFLAGS+=("-mfloat-abi=softfp")
-		fi
-	fi
-fi
-
-if [[ ("$GCC_COMPILER" -ne "0") ]]; then
-	WARNING_CXXFLAGS+=("-Wall" "-Wextra" "-Wno-unknown-pragmas" "-Wstrict-aliasing=3" "-Wstrict-overflow" "-Wcast-align"
-                        "-Waggressive-loop-optimizations" "-Wwrite-strings" "-Wformat=2" "-Wformat-security" "-Wtrampolines")
-
-	if [[ ("$GCC_70_OR_ABOVE" -ne "0") ]]; then
-		WARNING_CXXFLAGS+=("-Wrestrict -Wduplicated-branches -Wregister")
-	fi
-	if [[ ("$GCC_60_OR_ABOVE" -ne "0") ]]; then
-		WARNING_CXXFLAGS+=("-Wshift-negative-value -Wshift-overflow=2 -Wnull-dereference -Wduplicated-cond -Wodr-type-mismatch")
-	fi
-	if [[ ("$GCC_51_OR_ABOVE" -ne "0") ]]; then
-		WARNING_CXXFLAGS+=("-Wabi" "-Wodr")
-	fi
-fi
 
 if [[ ("$CLANG_COMPILER" -ne "0") ]]; then
 	WARNING_CXXFLAGS+=("-Wall" "-Wextra" "-Wno-unknown-pragmas" "-Wstrict-overflow" "-Wcast-align" "-Wwrite-strings"
@@ -1069,9 +940,6 @@ echo "RELEASE_CXXFLAGS: $RELEASE_CXXFLAGS" | tee -a "$TEST_RESULTS"
 echo "VALGRIND_CXXFLAGS: $VALGRIND_CXXFLAGS" | tee -a "$TEST_RESULTS"
 if [[ (! -z "$USER_CXXFLAGS") ]]; then
 	echo "USER_CXXFLAGS: $USER_CXXFLAGS" | tee -a "$TEST_RESULTS"
-fi
-if [[ ("${#PLATFORM_CXXFLAGS[@]}" -ne "0") ]]; then
-	echo "PLATFORM_CXXFLAGS: ${PLATFORM_CXXFLAGS[@]}" | tee -a "$TEST_RESULTS"
 fi
 
 #############################################
@@ -1096,14 +964,14 @@ if true; then
 	FAILED=0
 
 	# Filter out C++ and Doxygen comments.
-	COUNT=$(cat *.h *.cpp | "$GREP" -v '//' | "$GREP" -c '(assert.h|cassert)')
+	COUNT=$(cat *.h *.cpp | "$GREP" -v '//' | "$GREP" -c -E '(assert.h|cassert)')
 	if [[ "$COUNT" -ne "0" ]]; then
 		FAILED=1
 		echo "FAILED: found Posix assert headers" | tee -a "$TEST_RESULTS"
 	fi
 
 	# Filter out C++ and Doxygen comments.
-	COUNT=$(cat *.h *.cpp | "$GREP" -v '//' | "$EGREP" -c 'assert[[:space:]]*\(')
+	COUNT=$(cat *.h *.cpp | "$GREP" -v '//' | "$GREP" -c -E 'assert[[:space:]]*\(')
 	if [[ "$COUNT" -ne "0" ]]; then
 		FAILED=1
 		echo "FAILED: found use of Posix assert" | tee -a "$TEST_RESULTS"
@@ -1134,14 +1002,14 @@ if true; then
 	FAILED=0
 
 	# If this fires, then use the library's STDMIN(a,b) or (std::min)(a, b);
-	COUNT=$(cat *.h *.cpp | "$GREP" -v '//' | "$EGREP" -c 'std::min[[:space:]]*\(')
+	COUNT=$(cat *.h *.cpp | "$GREP" -v '//' | "$GREP" -c -E 'std::min[[:space:]]*\(')
 	if [[ "$COUNT" -ne "0" ]]; then
 		FAILED=1
 		echo "FAILED: found std::min" | tee -a "$TEST_RESULTS"
 	fi
 
 	# If this fires, then use the library's STDMAX(a,b) or (std::max)(a, b);
-	COUNT=$(cat *.h *.cpp | "$GREP" -v '//' | "$EGREP" -c 'std::max[[:space:]]*\(')
+	COUNT=$(cat *.h *.cpp | "$GREP" -v '//' | "$GREP" -c -E 'std::max[[:space:]]*\(')
 	if [[ "$COUNT" -ne "0" ]]; then
 		FAILED=1
 		echo "FAILED: found std::max" | tee -a "$TEST_RESULTS"
@@ -1167,41 +1035,79 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo
 
 		OBJFILE=sha.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
 
 		X86_SSE2=$(echo -n "$X86_CPU_FLAGS" | "$GREP" -i -c sse2)
-		X86_SHA256_HASH_BLOCKS=$(echo -n "$DISASS_TEXT" | "$EGREP" -c 'X86_SHA256_HashBlocks')
+		X86_SHA256_HASH_BLOCKS=$(echo -n "$DISASS_TEXT" | "$GREP" -c 'SHA256_HashMultipleBlocks_SSE2')
 		if [[ ("$X86_SHA256_HASH_BLOCKS" -ne "0") ]]; then
-			COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c '(rol.*0x|ror.*0x)')
-			if [[ ("$COUNT" -le "600") ]]; then
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E '(rol.*0x|ror.*0x)')
+			if [[ ("$COUNT" -le "250") ]]; then
 				FAILED=1
-				echo "ERROR: failed to generate rotate immediate instruction (X86_SHA256_HashBlocks)" | tee -a "$TEST_RESULTS"
+				echo "ERROR: failed to generate rotate immediate instruction (SHA256_HashMultipleBlocks_SSE2)" | tee -a "$TEST_RESULTS"
 			fi
 		else
-			COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c '(rol.*0x|ror.*0x)')
-			if [[ ("$COUNT" -le "1000") ]]; then
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E '(rol.*0x|ror.*0x)')
+			if [[ ("$COUNT" -le "500") ]]; then
 				FAILED=1
 				echo "ERROR: failed to generate rotate immediate instruction" | tee -a "$TEST_RESULTS"
 			fi
 		fi
 
 		if [[ ("$X86_SSE2" -ne "0" && "$X86_SHA256_HASH_BLOCKS" -eq "0") ]]; then
-			echo "ERROR: failed to use X86_SHA256_HashBlocks" | tee -a "$TEST_RESULTS"
+			echo "ERROR: failed to use SHA256_HashMultipleBlocks_SSE2" | tee -a "$TEST_RESULTS"
 		fi
 
 		if [[ ("$FAILED" -eq "0" && "$X86_SHA256_HASH_BLOCKS" -ne "0") ]]; then
-			echo "Verified rotate immediate machine instructions (X86_SHA256_HashBlocks)" | tee -a "$TEST_RESULTS"
+			echo "Verified rotate immediate machine instructions (SHA256_HashMultipleBlocks_SSE2)" | tee -a "$TEST_RESULTS"
 		elif [[ ("$FAILED" -eq "0") ]]; then
 			echo "Verified rotate immediate machine instructions" | tee -a "$TEST_RESULTS"
 		fi
 	fi
 
 	############################################
+	# Test CRC-32C code generation
+
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -msse4.2 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	if [[ "$?" -eq "0" ]]; then
+		X86_CRC32=1
+	fi
+
+	if [[ ("$X86_CRC32" -ne "0") ]]; then
+		echo
+		echo "************************************" | tee -a "$TEST_RESULTS"
+		echo "Testing: X86 CRC32 code generation" | tee -a "$TEST_RESULTS"
+		echo
+
+		OBJFILE=crc-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+
+		COUNT=0
+		FAILED=0
+		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c crc32b)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate crc32b instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c crc32l)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate crc32l instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		if [[ ("$FAILED" -eq "0") ]]; then
+			echo "Verified crc32b and crc32l machine instructions" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+
+	############################################
 	# Test AES-NI code generation
 
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -maes adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -maes adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		X86_AESNI=1
 	fi
@@ -1212,8 +1118,8 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo "Testing: X86 AES-NI code generation" | tee -a "$TEST_RESULTS"
 		echo
 
-		OBJFILE=rijndael.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		OBJFILE=rijndael-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1263,7 +1169,7 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 	############################################
 	# X86 carryless multiply code generation
 
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -mpclmul adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -mpclmul adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		X86_PCLMUL=1
 	fi
@@ -1274,20 +1180,20 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo "Testing: X86 carryless multiply code generation" | tee -a "$TEST_RESULTS"
 		echo
 
-		OBJFILE=gcm.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		OBJFILE=gcm-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
 		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
 
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c '(pclmulqdq|pclmullqhq|vpclmulqdq)')
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E '(pclmulqdq|pclmullqhq|vpclmulqdq)')
 		if [[ ("$COUNT" -eq "0") ]]; then
 			FAILED=1
 			echo "ERROR: failed to generate pclmullqhq instruction" | tee -a "$TEST_RESULTS"
 		fi
 
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c '(pclmulqdq|pclmullqlq|vpclmulqdq)')
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E '(pclmulqdq|pclmullqlq|vpclmulqdq)')
 		if [[ ("$COUNT" -eq "0") ]]; then
 			FAILED=1
 			echo "ERROR: failed to generate pclmullqlq instruction" | tee -a "$TEST_RESULTS"
@@ -1301,11 +1207,11 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 	############################################
 	# Test RDRAND and RDSEED code generation
 
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -mrdrnd adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -mrdrnd adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		X86_RDRAND=1
 	fi
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -mrdseed adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -mrdseed adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		X86_RDSEED=1
 	fi
@@ -1317,7 +1223,7 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo
 
 		OBJFILE=rdrand.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1345,47 +1251,9 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 	fi
 
 	############################################
-	# X86 CRC32 code generation
-
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -msse4.2 adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
-	if [[ "$?" -eq "0" ]]; then
-		X86_CRC32=1
-	fi
-
-	if [[ ("$X86_CRC32" -ne "0") ]]; then
-		echo
-		echo "************************************" | tee -a "$TEST_RESULTS"
-		echo "Testing: X86 CRC32 code generation" | tee -a "$TEST_RESULTS"
-		echo
-
-		OBJFILE=crc.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
-
-		COUNT=0
-		FAILED=0
-		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
-
-		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c crc32l)
-		if [[ ("$COUNT" -eq "0") ]]; then
-			FAILED=1
-			echo "ERROR: failed to generate crc32l instruction" | tee -a "$TEST_RESULTS"
-		fi
-
-		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c crc32b)
-		if [[ ("$COUNT" -eq "0") ]]; then
-			FAILED=1
-			echo "ERROR: failed to generate crc32b instruction" | tee -a "$TEST_RESULTS"
-		fi
-
-		if [[ ("$FAILED" -eq "0") ]]; then
-			echo "Verified crc32l and crc32b machine instructions" | tee -a "$TEST_RESULTS"
-		fi
-	fi
-
-	############################################
 	# X86 SHA code generation
 
-	"$CXX" -DCRYPTOPP_ADHOC_MAIN -msha adhoc.cpp -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -msha adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 		X86_SHA=1
 	fi
@@ -1396,8 +1264,8 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_X86" -ne "0" || "$IS_X64" -ne "0")) ]]; t
 		echo "Testing: X86 SHA code generation" | tee -a "$TEST_RESULTS"
 		echo
 
-		OBJFILE=sha.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1 -msse -msse2" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		OBJFILE=sha-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1458,106 +1326,121 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_ARM32" -ne "0" || "$IS_ARM64" -ne "0")) ]
 	############################################
 	# ARM NEON code generation
 
-	ARM_NEON=$(echo -n "$ARM_CPU_FLAGS" | "$EGREP" -i -c '(neon|asimd)')
+	ARM_NEON=$(echo -n "$ARM_CPU_FLAGS" | "$GREP" -i -c -E '(neon|asimd)')
 	if [[ ("$ARM_NEON" -ne "0" || "$HAVE_ARM_NEON" -ne "0") ]]; then
 		echo
 		echo "************************************" | tee -a "$TEST_RESULTS"
 		echo "Testing: ARM NEON code generation" | tee -a "$TEST_RESULTS"
 		echo
 
-		OBJFILE=aria.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		OBJFILE=aria-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
 		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
 
-		# ARIA::UncheckedKeySet: 8 vld1q.32
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'vld')
-		if [[ ("$COUNT" -lt "8") ]]; then
-			FAILED=1
-			echo "ERROR: failed to generate expected vector load instructions" | tee -a "$TEST_RESULTS"
+		if [[ ("$HAVE_ARMV8A" -ne "0") ]]; then
+			# ARIA::UncheckedKeySet: 4 ldr q{N}
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'ldr[[:space:]]*q')
+			if [[ ("$COUNT" -lt "4") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON load instructions" | tee -a "$TEST_RESULTS"
+			fi
+		else  # ARMv7
+			# ARIA::UncheckedKeySet: 4 vld1.32 {d1,d2}
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'vld1.32[[:space:]]*{')
+			if [[ ("$COUNT" -lt "4") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON load instructions" | tee -a "$TEST_RESULTS"
+			fi
 		fi
 
-		# ARIA::UncheckedKeySet: 24 vstr1q.32
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'vst')
-		if [[ ("$COUNT" -lt "24") ]]; then
-			FAILED=1
-			echo "ERROR: failed to generate expected vector store instructions" | tee -a "$TEST_RESULTS"
+		if [[ ("$HAVE_ARMV8A" -ne "0") ]]; then
+			# ARIA::UncheckedKeySet: 17 str q{N}
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'str[[:space:]]*q')
+			if [[ ("$COUNT" -lt "16") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON store instructions" | tee -a "$TEST_RESULTS"
+			fi
+		else
+			# ARIA::UncheckedKeySet: 17 vstr1.32 {d1,d2}
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'vst1.32[[:space:]]*{')
+			if [[ ("$COUNT" -lt "16") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON store instructions" | tee -a "$TEST_RESULTS"
+			fi
 		fi
 
-		# ARIA::UncheckedKeySet: 17 vshl.32
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'vshl')
-		if [[ ("$COUNT" -lt "17") ]]; then
-			FAILED=1
-			echo "ERROR: failed to generate expected vector shift left instructions" | tee -a "$TEST_RESULTS"
+		if [[ ("$HAVE_ARMV8A" -ne "0") ]]; then
+			# ARIA::UncheckedKeySet: 17 shl v{N}
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'shl[[:space:]]*v')
+			if [[ ("$COUNT" -lt "16") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON shift left instructions" | tee -a "$TEST_RESULTS"
+			fi
+		else
+			# ARIA::UncheckedKeySet: 17 vshl
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'vshl')
+			if [[ ("$COUNT" -lt "16") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON store instructions" | tee -a "$TEST_RESULTS"
+			fi
 		fi
 
-		# ARIA::UncheckedKeySet: 17 vshr.32
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'vshl')
-		if [[ ("$COUNT" -lt "17") ]]; then
-			FAILED=1
-			echo "ERROR: failed to generate expected vector shift right instructions" | tee -a "$TEST_RESULTS"
+		if [[ ("$HAVE_ARMV8A" -ne "0") ]]; then
+			# ARIA::UncheckedKeySet: 17 shr v{N}
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'shr[[:space:]]*v')
+			if [[ ("$COUNT" -lt "16") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON shift left instructions" | tee -a "$TEST_RESULTS"
+			fi
+		else
+			# ARIA::UncheckedKeySet: 17 vshr
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'vshr')
+			if [[ ("$COUNT" -lt "16") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON store instructions" | tee -a "$TEST_RESULTS"
+			fi
 		fi
 
-		# ARIA::UncheckedKeySet: 34 veor
-		COUNT=$(echo -n "$DISASS_TEXT" | "$EGREP" -i -c 'eor.*v|veor')
-		if [[ ("$COUNT" -lt "34") ]]; then
+		if [[ ("$HAVE_ARMV8A" -ne "0") ]]; then
+			# ARIA::UncheckedKeySet: 12 ext v{N}
+			COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'ext[[:space:]]*v')
+			if [[ ("$COUNT" -lt "12") ]]; then
+				FAILED=1
+				echo "ERROR: failed to generate NEON extract instructions" | tee -a "$TEST_RESULTS"
+			fi
+		fi
+
+		# ARIA::UncheckedKeySet: 17 veor
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c -E 'eor.*v|veor')
+		if [[ ("$COUNT" -lt "16") ]]; then
 			FAILED=1
-			echo "ERROR: failed to generate expected vector xor instructions" | tee -a "$TEST_RESULTS"
+			echo "ERROR: failed to generate NEON xor instructions" | tee -a "$TEST_RESULTS"
 		fi
 
 		if [[ ("$FAILED" -eq "0") ]]; then
-			echo "Verified vector load, store, shfit left, shift right, xor machine instructions" | tee -a "$TEST_RESULTS"
-		fi
-	fi
-
-	############################################
-	# ARM carryless multiply code generation
-
-	ARM_PMULL=$(echo -n "$ARM_CPU_FLAGS" | "$GREP" -i -c pmull)
-	if [[ ("$ARM_PMULL" -ne "0" || "$HAVE_ARM_CRYPTO" -ne "0") ]]; then
-		echo
-		echo "************************************" | tee -a "$TEST_RESULTS"
-		echo "Testing: ARM carryless multiply code generation" | tee -a "$TEST_RESULTS"
-		echo
-
-		OBJFILE=gcm.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
-
-		COUNT=0
-		FAILED=0
-		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
-
-		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -v pmull2 | "$GREP" -i -c pmull)
-		if [[ ("$COUNT" -eq "0") ]]; then
-			FAILED=1
-			echo "ERROR: failed to generate pmull instruction" | tee -a "$TEST_RESULTS"
-		fi
-
-		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c pmull2)
-		if [[ ("$COUNT" -eq "0") ]]; then
-			FAILED=1
-			echo "ERROR: failed to generate pmull2 instruction" | tee -a "$TEST_RESULTS"
-		fi
-
-		if [[ ("$FAILED" -eq "0") ]]; then
-			echo "Verified pmull and pmull2 machine instructions" | tee -a "$TEST_RESULTS"
+			echo "Verified NEON load, store, shfit left, shift right, xor machine instructions" | tee -a "$TEST_RESULTS"
 		fi
 	fi
 
 	############################################
 	# ARM CRC32 code generation
 
-	ARM_CRC32=$(echo -n "$ARM_CPU_FLAGS" | "$GREP" -i -c crc32)
-	if [[ ("$ARM_CRC32" -ne "0") ]]; then
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -march=armv8-a+crc adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	if [[ "$?" -eq "0" ]]; then
+		ARM_CRC32=1
+	fi
+
+	if [[ ("$HAVE_ARMV8A" -ne "0" && "$ARM_CRC32" -ne "0") ]]; then
 		echo
 		echo "************************************" | tee -a "$TEST_RESULTS"
 		echo "Testing: ARM CRC32 code generation" | tee -a "$TEST_RESULTS"
 		echo
 
-		OBJFILE=crc.o; rm -f "$OBJFILE" 2>/dev/null
-		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS -DDISABLE_NATIVE_ARCH=1" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+		OBJFILE=crc-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
 
 		COUNT=0
 		FAILED=0
@@ -1589,6 +1472,246 @@ if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_ARM32" -ne "0" || "$IS_ARM64" -ne "0")) ]
 
 		if [[ ("$FAILED" -eq "0") ]]; then
 			echo "Verified crc32cb, crc32cw, crc32b and crc32w machine instructions" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+
+	############################################
+	# ARM carryless multiply code generation
+
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -march=armv8-a+crypto adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	if [[ "$?" -eq "0" ]]; then
+		ARM_PMULL=1
+	fi
+
+	if [[ ("$HAVE_ARMV8A" -ne "0" && "$ARM_PMULL" -ne "0") ]]; then
+		echo
+		echo "************************************" | tee -a "$TEST_RESULTS"
+		echo "Testing: ARM carryless multiply code generation" | tee -a "$TEST_RESULTS"
+		echo
+
+		OBJFILE=gcm-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+
+		COUNT=0
+		FAILED=0
+		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -v pmull2 | "$GREP" -i -c pmull)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate pmull instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c pmull2)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate pmull2 instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		if [[ ("$FAILED" -eq "0") ]]; then
+			echo "Verified pmull and pmull2 machine instructions" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+
+	############################################
+	# ARM AES code generation
+
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -march=armv8-a+crypto adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	if [[ "$?" -eq "0" ]]; then
+		ARM_AES=1
+	fi
+
+	if [[ ("$HAVE_ARMV8A" -ne "0" && "$ARM_AES" -ne "0") ]]; then
+		echo
+		echo "************************************" | tee -a "$TEST_RESULTS"
+		echo "Testing: ARM AES generation" | tee -a "$TEST_RESULTS"
+		echo
+
+		OBJFILE=rijndael-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+
+		COUNT=0
+		FAILED=0
+		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c aese)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate aese instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c aesmc)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate aesmc instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c aesd)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate aesd instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c aesimc)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate aesimc instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		if [[ ("$FAILED" -eq "0") ]]; then
+			echo "Verified aese, aesd, aesmc, aesimc machine instructions" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+
+	############################################
+	# ARM SHA code generation
+
+	"$CXX" -DCRYPTOPP_ADHOC_MAIN -march=armv8-a+crypto adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+	if [[ "$?" -eq "0" ]]; then
+		ARM_SHA=1
+	fi
+
+	if [[ ("$HAVE_ARMV8A" -ne "0" && "$ARM_SHA" -ne "0") ]]; then
+		echo
+		echo "************************************" | tee -a "$TEST_RESULTS"
+		echo "Testing: ARM SHA generation" | tee -a "$TEST_RESULTS"
+		echo
+
+		OBJFILE=sha-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+
+		COUNT=0
+		FAILED=0
+		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha1c)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha1c instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha1m)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha1m instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha1p)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha1p instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha1h)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha1h instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha1su0)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha1su0 instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha1su1)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha1su1 instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -v sha256h2 | "$GREP" -i -c sha256h)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha256h instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha256h2)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha256h2 instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha256su0)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha256su0 instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c sha256su1)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate sha256su1 instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		if [[ ("$FAILED" -eq "0") ]]; then
+			echo "Verified sha1c, sha1m, sha1p, sha1su0, sha1su1, sha256h, sha256h2, sha256su0, sha256su1 machine instructions" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+fi
+
+############################################
+# Power8 code generation tests
+if [[ ("$HAVE_DISASS" -ne "0" && ("$IS_PPC32" -ne "0" || "$IS_PPC64" -ne "0")) ]]; then
+
+	############################################
+	# Power8 AES
+
+	PPC_AES=0
+	if [[ ("$PPC_AES" -eq "0") ]]; then
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -mcpu=power8 adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+		if [[ "$?" -eq "0" ]]; then
+			PPC_AES=1
+			PPC_AES_FLAGS="-mcpu=power8"
+		fi
+	fi
+	if [[ ("$PPC_AES" -eq "0") ]]; then
+		"$CXX" -DCRYPTOPP_ADHOC_MAIN -qarch=pwr8 -qaltivec adhoc.cpp -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
+		if [[ "$?" -eq "0" ]]; then
+			PPC_AES=1
+			PPC_AES_FLAGS="-qarch=pwr8 -qaltivec"
+		fi
+	fi
+
+	if [[ ("$PPC_AES" -ne "0") ]]; then
+		echo
+		echo "************************************" | tee -a "$TEST_RESULTS"
+		echo "Testing: Power8 AES generation" | tee -a "$TEST_RESULTS"
+		echo
+
+		OBJFILE=rijndael-simd.o; rm -f "$OBJFILE" 2>/dev/null
+		CXX="$CXX" CXXFLAGS="$RELEASE_CXXFLAGS $PPC_AES_FLAGS" "$MAKE" "${MAKEARGS[@]}" $OBJFILE 2>&1 | tee -a "$TEST_RESULTS"
+
+		COUNT=0
+		FAILED=0
+		DISASS_TEXT=$("$DISASS" "${DISASSARGS[@]}" "$OBJFILE" 2>/dev/null)
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -v vcipherlast | "$GREP" -i -c vcipher)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate vcipher instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c vcipherlast)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate vcipherlast instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -v vncipherlast | "$GREP" -i -c vncipher)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate vncipher instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		COUNT=$(echo -n "$DISASS_TEXT" | "$GREP" -i -c vncipherlast)
+		if [[ ("$COUNT" -eq "0") ]]; then
+			FAILED=1
+			echo "ERROR: failed to generate vncipherlast instruction" | tee -a "$TEST_RESULTS"
+		fi
+
+		if [[ ("$FAILED" -eq "0") ]]; then
+			echo "Verified vcipher, vcipherlast,vncipher, vncipherlast machine instructions" | tee -a "$TEST_RESULTS"
 		fi
 	fi
 fi
@@ -1647,63 +1770,6 @@ if true; then
 			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
 		fi
 		echo
-	fi
-fi
-
-############################################
-# Platform CXXFLAGS
-if [[ ("${#PLATFORM_CXXFLAGS[@]}" -ne "0") ]]; then
-
-	############################################
-	# Debug build, platform defines
-	echo
-	echo "************************************" | tee -a "$TEST_RESULTS"
-	echo "Testing: Debug, platform CXXFLAGS" | tee -a "$TEST_RESULTS"
-	echo
-
-	"$MAKE" clean > /dev/null 2>&1
-	rm -f adhoc.cpp > /dev/null 2>&1
-
-	CXXFLAGS="$DEBUG_CXXFLAGS ${PLATFORM_CXXFLAGS[@]}"
-	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
-
-	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
-	else
-		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
-		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
-		fi
-		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
-		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
-		fi
-	fi
-
-	############################################
-	# Release build, platform defines
-	echo
-	echo "************************************" | tee -a "$TEST_RESULTS"
-	echo "Testing: Release, platform CXXFLAGS" | tee -a "$TEST_RESULTS"
-	echo
-
-	"$MAKE" clean > /dev/null 2>&1
-	rm -f adhoc.cpp > /dev/null 2>&1
-
-	CXXFLAGS="$RELEASE_CXXFLAGS ${PLATFORM_CXXFLAGS[@]}"
-	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
-
-	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
-	else
-		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
-		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
-		fi
-		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
-		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
-		fi
 	fi
 fi
 
@@ -2105,7 +2171,7 @@ if [[ "$HAVE_CXX03" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2131,7 +2197,7 @@ if [[ "$HAVE_CXX03" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2162,7 +2228,7 @@ if [[ "$HAVE_GNU03" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=gnu++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=gnu++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2188,7 +2254,7 @@ if [[ "$HAVE_GNU03" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=gnu++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=gnu++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2219,7 +2285,7 @@ if [[ "$HAVE_CXX11" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2245,7 +2311,7 @@ if [[ "$HAVE_CXX11" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2276,7 +2342,7 @@ if [[ "$HAVE_GNU11" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=gnu++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=gnu++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2302,7 +2368,7 @@ if [[ "$HAVE_GNU11" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=gnu++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=gnu++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2333,7 +2399,7 @@ if [[ "$HAVE_CXX14" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2359,7 +2425,7 @@ if [[ "$HAVE_CXX14" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2390,7 +2456,7 @@ if [[ "$HAVE_GNU14" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=gnu++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=gnu++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2416,7 +2482,7 @@ if [[ "$HAVE_GNU14" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=gnu++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=gnu++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2447,7 +2513,7 @@ if [[ "$HAVE_CXX17" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2473,7 +2539,7 @@ if [[ "$HAVE_CXX17" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2504,7 +2570,7 @@ if [[ "$HAVE_GNU17" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=gnu++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=gnu++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2530,7 +2596,7 @@ if [[ "$HAVE_GNU17" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=gnu++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=gnu++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2561,7 +2627,7 @@ if [[ "$HAVE_X32" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -mx32 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -mx32 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2587,7 +2653,7 @@ if [[ "$HAVE_X32" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -mx32 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -mx32 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2618,7 +2684,7 @@ if true; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -DCRYPTOPP_INIT_PRIORITY=0 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -DCRYPTOPP_INIT_PRIORITY=0 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2644,7 +2710,7 @@ if true; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -DCRYPTOPP_INIT_PRIORITY=0 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -DCRYPTOPP_INIT_PRIORITY=0 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2675,7 +2741,7 @@ if true; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -DNO_OS_DEPENDENCE ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -DNO_OS_DEPENDENCE $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2701,7 +2767,7 @@ if true; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -DNO_OS_DEPENDENCE ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -DNO_OS_DEPENDENCE $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2732,7 +2798,7 @@ if [[ "$HAVE_LDGOLD" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" LD="ld.gold" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2758,7 +2824,7 @@ if [[ "$HAVE_LDGOLD" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" LD="ld.gold" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2789,7 +2855,7 @@ if [[ "$HAVE_O3" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DDEBUG $OPT_O3 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DDEBUG $OPT_O0 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2815,7 +2881,7 @@ if [[ "$HAVE_O3" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DNDEBUG $OPT_O3 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DNDEBUG $OPT_O3 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2846,7 +2912,7 @@ if [[ "$HAVE_O5" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DDEBUG $OPT_O5 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DDEBUG $OPT_O5 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2872,7 +2938,7 @@ if [[ "$HAVE_O5" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DNDEBUG $OPT_O5 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DNDEBUG $OPT_O5 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2903,7 +2969,7 @@ if [[ "$HAVE_OS" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DDEBUG $OPT_OS ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DDEBUG $OPT_OS $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2929,7 +2995,7 @@ if [[ "$HAVE_OS" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DNDEBUG $OPT_OS ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DNDEBUG $OPT_OS $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2960,7 +3026,7 @@ if [[ "$HAVE_OFAST" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DDEBUG $OPT_OFAST ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DDEBUG $OPT_OFAST $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -2986,7 +3052,7 @@ if [[ "$HAVE_OFAST" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DNDEBUG $OPT_OFAST ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DNDEBUG $OPT_OFAST $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3017,7 +3083,7 @@ if [[ ("$SUN_COMPILER" -eq "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" lean 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3043,7 +3109,7 @@ if [[ ("$SUN_COMPILER" -eq "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" lean 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3071,7 +3137,7 @@ if [[ ("$HAVE_OMP" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DDEBUG ${OMP_FLAGS[@]} ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DDEBUG ${OMP_FLAGS[@]} $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3095,7 +3161,7 @@ if [[ ("$HAVE_OMP" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="-DNDEBUG ${OMP_FLAGS[@]} ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="-DNDEBUG ${OMP_FLAGS[@]} $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3126,7 +3192,7 @@ if [[ ("$HAVE_CXX03" -ne "0" && "$HAVE_UBSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" ubsan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3152,7 +3218,7 @@ if [[ ("$HAVE_CXX03" -ne "0" && "$HAVE_UBSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" ubsan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3183,7 +3249,7 @@ if [[ ("$HAVE_CXX03" -ne "0" && "$HAVE_ASAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" asan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3221,7 +3287,7 @@ if [[ ("$HAVE_CXX03" -ne "0" && "$HAVE_ASAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" asan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3263,7 +3329,7 @@ if [[ ("$HAVE_CXX03" -ne "0" && "$HAVE_BSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++03 -fsanitize=bounds-strict ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++03 -fsanitize=bounds-strict $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3301,7 +3367,7 @@ if [[ ("$HAVE_CXX03" -ne "0" && "$HAVE_BSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 -fsanitize=bounds-strict ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 -fsanitize=bounds-strict $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3343,7 +3409,7 @@ if [[ ("$HAVE_CXX11" -ne "0" && "$HAVE_UBSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" ubsan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3369,7 +3435,7 @@ if [[ ("$HAVE_CXX11" -ne "0" && "$HAVE_UBSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" ubsan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3400,7 +3466,7 @@ if [[ ("$HAVE_CXX11" -ne "0" && "$HAVE_ASAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" asan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3438,7 +3504,7 @@ if [[ ("$HAVE_CXX11" -ne "0" && "$HAVE_ASAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" asan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3480,7 +3546,7 @@ if [[ ("$HAVE_CXX11" -ne "0" && "$HAVE_BSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++11 -fsanitize=bounds-strict ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$DEBUG_CXXFLAGS -std=c++11 -fsanitize=bounds-strict $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3518,7 +3584,7 @@ if [[ ("$HAVE_CXX11" -ne "0" && "$HAVE_BSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 -fsanitize=bounds-strict ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 -fsanitize=bounds-strict $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3557,7 +3623,7 @@ if [[ ("$HAVE_CXX14" -ne "0" && "$HAVE_UBSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" ubsan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3585,7 +3651,7 @@ if [[ ("$HAVE_CXX14" -ne "0" && "$HAVE_ASAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" asan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3624,7 +3690,7 @@ if [[ ("$HAVE_CXX14" -ne "0" && "$HAVE_BSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 -fsanitize=bounds-strict ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 -fsanitize=bounds-strict $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3652,7 +3718,7 @@ if [[ ("$HAVE_CXX17" -ne "0" && "$HAVE_UBSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" ubsan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3680,7 +3746,7 @@ if [[ ("$HAVE_CXX17" -ne "0" && "$HAVE_ASAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" asan | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3719,7 +3785,7 @@ if [[ ("$HAVE_CXX17" -ne "0" && "$HAVE_BSAN" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 -fsanitize=bounds-strict ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 -fsanitize=bounds-strict $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3740,25 +3806,9 @@ fi
 # For Solaris, test under Sun Studio 12.2 - 12.5
 if [[ "$IS_SOLARIS" -ne "0" ]]; then
 
-	# If PLATFORM_CXXFLAGS is for SunCC, then use them
-	if [[ ("$SUNCC_510_OR_ABOVE" -ne "0") ]]; then
-		SUNCC_CXXFLAGS="${PLATFORM_CXXFLAGS[@]}"
-	fi
-
 	############################################
 	# Sun Studio 12.2/SunCC 5.11
 	if [[ (-e "/opt/solstudio12.2/bin/CC") ]]; then
-
-		# More workarounds... SunCC 5.11 only does SSSE3, http://github.com/weidai11/cryptopp/issues/228
-		SUNCC_SSE_CXXFLAGS=$(echo -n "${SUNCC_CXXFLAGS[@]}" | "$AWK" '/__(SSE2|SSE3|SSSE3)__/' ORS=' ' RS=' ')
-
-		if [[ $(echo -n "$SUNCC_SSE_CXXFLAGS" | "$GREP" -i -c "ssse3") != "0" ]]; then
-			SUNCC_SSE_CXXFLAGS="$SUNCC_SSE_CXXFLAGS -xarch=ssse3";
-		elif [[ $(echo -n "$SUNCC_SSE_CXXFLAGS" | "$GREP" -i -c "sse3") != "0" ]]; then
-			SUNCC_SSE_CXXFLAGS="$SUNCC_SSE_CXXFLAGS -xarch=sse3";
-		else
-			SUNCC_SSE_CXXFLAGS="$SUNCC_SSE_CXXFLAGS -xarch=sse2";
-		fi
 
 		############################################
 		# Debug build
@@ -3770,7 +3820,7 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DDEBUG -g -xO0 $SUNCC_SSE_CXXFLAGS"
+		CXXFLAGS="-DDEBUG -g -xO0"
 		CXX="/opt/solstudio12.2/bin/CC" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3796,7 +3846,7 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g -xO2 $SUNCC_SSE_CXXFLAGS"
+		CXXFLAGS="-DNDEBUG -g -xO2"
 		CXX="/opt/solstudio12.2/bin/CC" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3817,21 +3867,6 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 	# Sun Studio 12.3/SunCC 5.12
 	if [[ (-e "/opt/solarisstudio12.3/bin/CC") ]]; then
 
-		# More workarounds... SunCC 5.12 only does SSE4, http://github.com/weidai11/cryptopp/issues/228
-		SUNCC_SSE_CXXFLAGS=$(echo -n "${SUNCC_CXXFLAGS[@]}" | "$AWK" '/__(SSE2|SSE3|SSSE3|SSE4_1|SSE4_2)__/' ORS=' ' RS=' ')
-
-		if [[ $(echo -n "$SUNCC_SSE_CXXFLAGS" | "$GREP" -i -c "sse4_2") != "0" ]]; then
-			SUNCC_SSE_CXXFLAGS="$SUNCC_SSE_CXXFLAGS -xarch=sse4_2";
-		elif [[ $(echo -n "$SUNCC_SSE_CXXFLAGS" | "$GREP" -i -c "sse4_1") != "0" ]]; then
-			SUNCC_SSE_CXXFLAGS="$SUNCC_SSE_CXXFLAGS -xarch=sse4_1";
-		elif [[ $(echo -n "$SUNCC_SSE_CXXFLAGS" | "$GREP" -i -c "ssse3") != "0" ]]; then
-			SUNCC_SSE_CXXFLAGS="$SUNCC_SSE_CXXFLAGS -xarch=ssse3";
-		elif [[ $(echo -n "$SUNCC_SSE_CXXFLAGS" | "$GREP" -i -c "sse3") != "0" ]]; then
-			SUNCC_SSE_CXXFLAGS="$SUNCC_SSE_CXXFLAGS -xarch=sse3";
-		else
-			SUNCC_SSE_CXXFLAGS="$SUNCC_SSE_CXXFLAGS -xarch=sse2";
-		fi
-
 		############################################
 		# Debug build
 		echo
@@ -3842,7 +3877,7 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DDEBUG -g3 -xO0 $SUNCC_SSE_CXXFLAGS"
+		CXXFLAGS="-DDEBUG -g3 -xO0"
 		CXX=/opt/solarisstudio12.3/bin/CC CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3868,7 +3903,7 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g3 -xO2 $SUNCC_SSE_CXXFLAGS"
+		CXXFLAGS="-DNDEBUG -g3 -xO2"
 		CXX=/opt/solarisstudio12.3/bin/CC CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3901,7 +3936,7 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DDEBUG -g3 -xO0 $SUNCC_CXXFLAGS"
+		CXXFLAGS="-DDEBUG -g3 -xO0"
 		CXX=/opt/solarisstudio12.4/bin/CC CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3927,7 +3962,7 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g2 -xO2 $SUNCC_CXXFLAGS"
+		CXXFLAGS="-DNDEBUG -g2 -xO2"
 		CXX=/opt/solarisstudio12.4/bin/CC CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3960,7 +3995,7 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DDEBUG -g3 -xO1 $SUNCC_CXXFLAGS"
+		CXXFLAGS="-DDEBUG -g3 -xO1"
 		CXX=/opt/developerstudio12.5/bin/CC CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -3986,8 +4021,67 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g2 -xO2 $SUNCC_CXXFLAGS"
+		CXXFLAGS="-DNDEBUG -g2 -xO2"
 		CXX=/opt/developerstudio12.5/bin/CC CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
+
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
+		else
+			./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
+			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+				echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
+			fi
+			./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
+			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+				echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
+			fi
+		fi
+	fi
+
+	############################################
+	# Sun Studio 12.6/SunCC 5.15
+	if [[ (-e "/opt/developerstudio12.6/bin/CC") ]]; then
+
+		############################################
+		# Debug build
+		echo
+		echo "************************************" | tee -a "$TEST_RESULTS"
+		echo "Testing: Sun Studio 12.6, debug, platform CXXFLAGS" | tee -a "$TEST_RESULTS"
+		echo
+
+		# No workarounds... SunCC 5.15 does AES, PCLMUL, RDRAND, AVX, BMI, ADX...
+
+		"$MAKE" clean > /dev/null 2>&1
+		rm -f adhoc.cpp > /dev/null 2>&1
+
+		CXXFLAGS="-DDEBUG -g3 -xO1"
+		CXX=/opt/developerstudio12.6/bin/CC CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
+
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
+		else
+			./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
+			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+				echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
+			fi
+			./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
+			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+				echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
+			fi
+		fi
+
+		############################################
+		# Release build
+		echo
+		echo "************************************" | tee -a "$TEST_RESULTS"
+		echo "Testing: Sun Studio 12.6, release, platform CXXFLAGS" | tee -a "$TEST_RESULTS"
+		echo
+
+		"$MAKE" clean > /dev/null 2>&1
+		rm -f adhoc.cpp > /dev/null 2>&1
+
+		CXXFLAGS="-DNDEBUG -g2 -xO2"
+		CXX=/opt/developerstudio12.6/bin/CC CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 			echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -4043,7 +4137,7 @@ if [[ "$IS_SOLARIS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g2 -O2"
+		CXXFLAGS="-DNDEBUG -g2 -O3"
 		CXX="/bin/g++" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4075,7 +4169,7 @@ if [[ ("$IS_DARWIN" -ne "0") && ("$HAVE_CXX03" -ne "0" && "$CLANG_COMPILER" -ne 
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 -stdlib=libc++ ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 -stdlib=libc++ $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4103,7 +4197,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX03" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 -stdlib=libstdc++ ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 -stdlib=libstdc++ $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4131,7 +4225,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX11" -ne "0" && "$CLANG_COMPILER" -ne "0
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 -stdlib=libc++ ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 -stdlib=libc++ $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4159,7 +4253,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX11" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 -stdlib=libstdc++ ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 -stdlib=libstdc++ $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4187,7 +4281,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX14" -ne "0" && "$CLANG_COMPILER" -ne "0
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 -stdlib=libc++ ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 -stdlib=libc++ $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4215,7 +4309,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX14" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 -stdlib=libstdc++ ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 -stdlib=libstdc++ $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4243,7 +4337,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX17" -ne "0" && "$CLANG_COMPILER" -ne "0
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 -stdlib=libc++ ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 -stdlib=libc++ $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4271,7 +4365,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX17" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 -stdlib=libstdc++ ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 -stdlib=libstdc++ $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4299,7 +4393,7 @@ if [[ "$IS_DARWIN" -ne "0" && "$HAVE_INTEL_MULTIARCH" -ne "0" && "$HAVE_CXX03" -
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -arch i386 -arch x86_64 -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -arch i386 -arch x86_64 -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4338,7 +4432,7 @@ if [[ "$IS_DARWIN" -ne "0" && "$HAVE_INTEL_MULTIARCH" -ne "0" && "$HAVE_CXX11" -
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -arch i386 -arch x86_64 -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -arch i386 -arch x86_64 -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4377,7 +4471,7 @@ if [[ "$IS_DARWIN" -ne "0" && "$HAVE_INTEL_MULTIARCH" -ne "0" && "$HAVE_CXX14" -
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -arch i386 -arch x86_64 -std=c++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -arch i386 -arch x86_64 -std=c++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4416,7 +4510,7 @@ if [[ "$IS_DARWIN" -ne "0" && "$HAVE_INTEL_MULTIARCH" -ne "0" && "$HAVE_CXX17" -
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -arch i386 -arch x86_64 -std=c++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -arch i386 -arch x86_64 -std=c++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4455,7 +4549,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_PPC_MULTIARCH" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -arch ppc -arch ppc64 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -arch ppc -arch ppc64 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4494,7 +4588,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX03" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4528,7 +4622,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX11" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4562,7 +4656,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX14" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4596,7 +4690,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX17" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -std=c++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4620,6 +4714,73 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX17" -ne "0") ]]; then
 fi
 
 ############################################
+# CMake builds
+CMAKE=$(which cmake 2>&1 | "$GREP" -v "no cmake" | head -1)
+if [[ (! -z "$CMAKE") ]]; then
+	############################################
+	# Debug build
+	echo
+	echo "************************************" | tee -a "$TEST_RESULTS"
+	echo "Testing: Debug, CMake build" | tee -a "$TEST_RESULTS"
+	echo
+
+	"$MAKE" clean > /dev/null 2>&1
+	rm -f adhoc.cpp > /dev/null 2>&1
+
+	mkdir cryptopp-cmake
+	cd cryptopp-cmake
+
+	"$CMAKE" -DCMAKE_BUILD_TYPE=Debug ../
+	"$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
+
+	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
+	else
+		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
+		fi
+		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+
+	cd ../
+	rm -rf cryptopp-cmake &> /dev/null
+
+	############################################
+	# Release build
+	echo
+	echo "************************************" | tee -a "$TEST_RESULTS"
+	echo "Testing: Release, CMake build" | tee -a "$TEST_RESULTS"
+	echo
+
+	mkdir cryptopp-cmake
+	cd cryptopp-cmake
+
+	"$CMAKE" -DCMAKE_BUILD_TYPE=Release ../
+	"$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
+
+	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
+	else
+		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
+		fi
+		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
+		fi
+		echo
+	fi
+
+	cd ../
+	rm -rf cryptopp-cmake &> /dev/null
+fi
+
+############################################
 # Benchmarks
 if [[ "$WANT_BENCHMARKS" -ne "0" ]]; then
 
@@ -4633,7 +4794,7 @@ if [[ "$WANT_BENCHMARKS" -ne "0" ]]; then
 
 		"$MAKE" clean > /dev/null 2>&1
 
-		CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+		CXXFLAGS="$RELEASE_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4658,7 +4819,7 @@ if [[ "$WANT_BENCHMARKS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+		CXXFLAGS="$RELEASE_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4683,7 +4844,7 @@ if [[ "$WANT_BENCHMARKS" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+		CXXFLAGS="$RELEASE_CXXFLAGS -std=c++14 $USER_CXXFLAGS"
 		CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4712,7 +4873,7 @@ if [[ "$IS_MINGW" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -DPREFER_BERKELEY_STYLE_SOCKETS -DNO_WINDOWS_STYLE_SOCKETS ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -DPREFER_BERKELEY_STYLE_SOCKETS -DNO_WINDOWS_STYLE_SOCKETS $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4740,7 +4901,7 @@ if [[ "$IS_MINGW" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -DPREFER_WINDOWS_STYLE_SOCKETS -DNO_BERKELEY_STYLE_SOCKETS ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -DPREFER_WINDOWS_STYLE_SOCKETS -DNO_BERKELEY_STYLE_SOCKETS $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4768,7 +4929,7 @@ if [[ "$HAVE_CXX03" -ne "0" && "$HAVE_VALGRIND" -ne "0" ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$VALGRIND_CXXFLAGS -std=c++03 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$VALGRIND_CXXFLAGS -std=c++03 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4790,7 +4951,7 @@ if [[ ("$HAVE_VALGRIND" -ne "0" && "$HAVE_CXX11" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$VALGRIND_CXXFLAGS -std=c++11 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$VALGRIND_CXXFLAGS -std=c++11 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4812,7 +4973,7 @@ if [[ ("$HAVE_VALGRIND" -ne "0" && "$HAVE_CXX14" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$VALGRIND_CXXFLAGS -std=c++14 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$VALGRIND_CXXFLAGS -std=c++14 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -4834,7 +4995,7 @@ if [[ ("$HAVE_VALGRIND" -ne "0" && "$HAVE_CXX17" -ne "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	CXXFLAGS="$VALGRIND_CXXFLAGS -std=c++17 ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$VALGRIND_CXXFLAGS -std=c++17 $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -5004,7 +5165,7 @@ fi
 if [[ ("$CLANG_COMPILER" -eq "0") ]]; then
 
 	CLANG_CXX=$(which clang++ 2>&1 | "$GREP" -v "no clang++" | head -1)
-	"$CLANG_CXX" -x c++ -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$CLANG_CXX" -x c++ -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 
 		############################################
@@ -5017,7 +5178,7 @@ if [[ ("$CLANG_COMPILER" -eq "0") ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g2 -O2"
+		CXXFLAGS="-DNDEBUG -g2 -O3"
 		CXX="$CLANG_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 			echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5039,7 +5200,7 @@ fi
 if [[ ("$GCC_COMPILER" -eq "0") ]]; then
 
 	GCC_CXX=$(which g++ 2>&1 | "$GREP" -v "no g++" | head -1)
-	"$GCC_CXX" -x c++ -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$GCC_CXX" -x c++ -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 
 		############################################
@@ -5052,7 +5213,7 @@ if [[ ("$GCC_COMPILER" -eq "0") ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g2 -O2"
+		CXXFLAGS="-DNDEBUG -g2 -O3"
 		CXX="$GCC_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 			echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5077,7 +5238,7 @@ if [[ ("$INTEL_COMPILER" -eq "0") ]]; then
 	if [[ (-z "$INTEL_CXX") ]]; then
 		INTEL_CXX=$(find /opt/intel -name icpc 2>/dev/null | "$GREP" -iv composer | head -1)
 	fi
-	"$INTEL_CXX" -x c++ -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+	"$INTEL_CXX" -x c++ -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 
 		############################################
@@ -5090,7 +5251,7 @@ if [[ ("$INTEL_COMPILER" -eq "0") ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g2 -O2"
+		CXXFLAGS="-DNDEBUG -g2 -O3"
 		CXX="$INTEL_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 			echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5113,7 +5274,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 
 	MACPORTS_CXX=$(find /opt/local/bin -name 'g++-mp-4*' 2>/dev/null | head -1)
 	if [[ (! -z "$MACPORTS_CXX") ]]; then
-		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 
 			############################################
@@ -5127,7 +5288,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 			rm -f adhoc.cpp > /dev/null 2>&1
 
 			# We want to use -stdlib=libstdc++ below, but it causes a compile error. Maybe MacPorts hardwired libc++.
-			CXXFLAGS="-DNDEBUG -g2 -O2 -std=c++11"
+			CXXFLAGS="-DNDEBUG -g2 -O3 -std=c++11"
 			CXX="$MACPORTS_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 				echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5146,7 +5307,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 
 	MACPORTS_CXX=$(find /opt/local/bin -name 'g++-mp-5*' 2>/dev/null | head -1)
 	if [[ (! -z "$MACPORTS_CXX") ]]; then
-		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 
 			############################################
@@ -5160,7 +5321,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 			rm -f adhoc.cpp > /dev/null 2>&1
 
 			# We want to use -stdlib=libstdc++ below, but it causes a compile error. Maybe MacPorts hardwired libc++.
-			CXXFLAGS="-DNDEBUG -g2 -O2 -std=c++11"
+			CXXFLAGS="-DNDEBUG -g2 -O3 -std=c++11"
 			CXX="$MACPORTS_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 				echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5179,7 +5340,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 
 	MACPORTS_CXX=$(find /opt/local/bin -name 'g++-mp-6*' 2>/dev/null | head -1)
 	if [[ (! -z "$MACPORTS_CXX") ]]; then
-		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 
 			############################################
@@ -5193,7 +5354,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 			rm -f adhoc.cpp > /dev/null 2>&1
 
 			# We want to use -stdlib=libstdc++ below, but it causes a compile error. Maybe MacPorts hardwired libc++.
-			CXXFLAGS="-DNDEBUG -g2 -O2 -std=c++11"
+			CXXFLAGS="-DNDEBUG -g2 -O3 -std=c++11"
 			CXX="$MACPORTS_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 				echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5212,7 +5373,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 
 	MACPORTS_CXX=$(find /opt/local/bin -name 'g++-mp-7*' 2>/dev/null | head -1)
 	if [[ (! -z "$MACPORTS_CXX") ]]; then
-		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 
 			############################################
@@ -5226,7 +5387,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 			rm -f adhoc.cpp > /dev/null 2>&1
 
 			# We want to use -stdlib=libstdc++ below, but it causes a compile error. Maybe MacPorts hardwired libc++.
-			CXXFLAGS="-DNDEBUG -g2 -O2 -std=c++11"
+			CXXFLAGS="-DNDEBUG -g2 -O3 -std=c++11"
 			CXX="$MACPORTS_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 				echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5245,7 +5406,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 
 	MACPORTS_CXX=$(find /opt/local/bin -name 'clang++-mp-3.7*' 2>/dev/null | head -1)
 	if [[ (! -z "$MACPORTS_CXX") ]]; then
-		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 
 			############################################
@@ -5258,7 +5419,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 			"$MAKE" clean > /dev/null 2>&1
 			rm -f adhoc.cpp > /dev/null 2>&1
 
-			CXXFLAGS="-DNDEBUG -g2 -O2 -std=c++11 -stdlib=libc++"
+			CXXFLAGS="-DNDEBUG -g2 -O3 -std=c++11 -stdlib=libc++"
 			CXX="$MACPORTS_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 				echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5277,7 +5438,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 
 	MACPORTS_CXX=$(find /opt/local/bin -name 'clang++-mp-3.8*' 2>/dev/null | head -1)
 	if [[ (! -z "$MACPORTS_CXX") ]]; then
-		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 
 			############################################
@@ -5290,7 +5451,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 			"$MAKE" clean > /dev/null 2>&1
 			rm -f adhoc.cpp > /dev/null 2>&1
 
-			CXXFLAGS="-DNDEBUG -g2 -O2 -std=c++11 -stdlib=libc++"
+			CXXFLAGS="-DNDEBUG -g2 -O3 -std=c++11 -stdlib=libc++"
 			CXX="$MACPORTS_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 				echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5309,7 +5470,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 
 	MACPORTS_CXX=$(find /opt/local/bin -name 'clang++-mp-3.9*' 2>/dev/null | head -1)
 	if [[ (! -z "$MACPORTS_CXX") ]]; then
-		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 
 			############################################
@@ -5322,7 +5483,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 			"$MAKE" clean > /dev/null 2>&1
 			rm -f adhoc.cpp > /dev/null 2>&1
 
-			CXXFLAGS="-DNDEBUG -g2 -O2 -std=c++11 -stdlib=libc++"
+			CXXFLAGS="-DNDEBUG -g2 -O3 -std=c++11 -stdlib=libc++"
 			CXX="$MACPORTS_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 				echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5341,7 +5502,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 
 	MACPORTS_CXX=$(find /opt/local/bin -name 'clang++-mp-4*' 2>/dev/null | head -1)
 	if [[ (! -z "$MACPORTS_CXX") ]]; then
-		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMP/adhoc.exe" > /dev/null 2>&1
+		"$MACPORTS_CXX" -x c++ -std=c++11 -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 		if [[ "$?" -eq "0" ]]; then
 
 			############################################
@@ -5354,7 +5515,7 @@ if [[ ("$IS_DARWIN" -ne "0" && "$MACPORTS_COMPILER" -eq "0") ]]; then
 			"$MAKE" clean > /dev/null 2>&1
 			rm -f adhoc.cpp > /dev/null 2>&1
 
-			CXXFLAGS="-DNDEBUG -g2 -O2 -std=c++11 -stdlib=libc++"
+			CXXFLAGS="-DNDEBUG -g2 -O3 -std=c++11 -stdlib=libc++"
 			CXX="$MACPORTS_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 			if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
 				echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
@@ -5389,7 +5550,7 @@ if [[ "$IS_DARWIN" -ne "0" ]]; then
 		"$MAKE" clean > /dev/null 2>&1
 		rm -f adhoc.cpp > /dev/null 2>&1
 
-		CXXFLAGS="-DNDEBUG -g2 -O2"
+		CXXFLAGS="-DNDEBUG -g2 -O3"
 		CXX="$XCODE_CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
 
 		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -5419,10 +5580,10 @@ if [[ ("$IS_CYGWIN" -eq "0") && ("$IS_MINGW" -eq "0") ]]; then
 	"$MAKE" clean > /dev/null 2>&1
 	rm -f adhoc.cpp > /dev/null 2>&1
 
-	INSTALL_DIR="/tmp/cryptopp_test"
+	INSTALL_DIR="$TMPDIR/cryptopp_test"
 	rm -rf "$INSTALL_DIR" > /dev/null 2>&1
 
-	CXXFLAGS="$RELEASE_CXXFLAGS -DCRYPTOPP_DATA_DIR='\"$INSTALL_DIR/share/cryptopp/\"' ${PLATFORM_CXXFLAGS[@]} $USER_CXXFLAGS"
+	CXXFLAGS="$RELEASE_CXXFLAGS -DCRYPTOPP_DATA_DIR='\"$INSTALL_DIR/share/cryptopp/\"' $USER_CXXFLAGS"
 	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS" "$INSTALL_RESULTS"
 
 	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
@@ -5560,13 +5721,13 @@ echo | tee -a "$TEST_RESULTS"
 # "Error" is from the GNU assembler
 # "error" is from the sanitizers
 # "Illegal", "Conditional", "0 errors" and "suppressed errors" are from Valgrind.
-ECOUNT=$("$EGREP" '(Error|ERROR|error|FAILED|Illegal|Conditional|CryptoPP::Exception)' $TEST_RESULTS | "$EGREP" -v '( 0 errors|suppressed errors|error detector|format-security)' | wc -l | "$AWK" '{print $1}')
+ECOUNT=$("$GREP" -E '(Error|ERROR|error|FAILED|Illegal|Conditional|CryptoPP::Exception)' $TEST_RESULTS | "$GREP" -v -E '( 0 errors|suppressed errors|error detector|format-security)' | wc -l | "$AWK" '{print $1}')
 if (( "$ECOUNT" == "0" )); then
 	echo "No failures detected" | tee -a "$TEST_RESULTS"
 else
 	echo "$ECOUNT errors detected. See $TEST_RESULTS for details" | tee -a "$TEST_RESULTS"
 	if (( "$ECOUNT" < 16 )); then
-		"$EGREP" -n '(Error|ERROR|error|FAILED|Illegal|Conditional|CryptoPP::Exception)' "$TEST_RESULTS" | "$EGREP" -v '( 0 errors|suppressed errors|error detector|Assertion|format-security)'
+		"$GREP" -n -E '(Error|ERROR|error|FAILED|Illegal|Conditional|CryptoPP::Exception)' "$TEST_RESULTS" | "$GREP" -v -E '( 0 errors|suppressed errors|error detector|Assertion|format-security)'
 	fi
 fi
 
@@ -5577,12 +5738,12 @@ echo
 echo "************************************************" | tee -a "$TEST_RESULTS" "$WARN_RESULTS"
 echo | tee -a "$TEST_RESULTS" "$WARN_RESULTS"
 
-WCOUNT=$("$EGREP" '(warning:)' $WARN_RESULTS | wc -l | "$AWK" '{print $1}')
+WCOUNT=$("$GREP" -E '(warning:)' $WARN_RESULTS | wc -l | "$AWK" '{print $1}')
 if (( "$WCOUNT" == "0" )); then
 	echo "No warnings detected" | tee -a "$TEST_RESULTS" "$WARN_RESULTS"
 else
 	echo "$WCOUNT warnings detected. See $WARN_RESULTS for details" | tee -a "$TEST_RESULTS" "$WARN_RESULTS"
-	# "$EGREP" -n '(warning:)' $WARN_RESULTS | "$GREP" -v 'deprecated-declarations'
+	# "$GREP" -n -E '(warning:)' $WARN_RESULTS | "$GREP" -v 'deprecated-declarations'
 fi
 
 ############################################

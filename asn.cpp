@@ -76,7 +76,7 @@ bool BERLengthDecode(BufferedTransformation &bt, lword &length, bool &definiteLe
 bool BERLengthDecode(BufferedTransformation &bt, size_t &length)
 {
 	lword lw = 0;
-	bool definiteLength;
+	bool definiteLength = false;
 	if (!BERLengthDecode(bt, lw, definiteLength))
 		BERDecodeError();
 	if (!SafeConvert(lw, length))
@@ -330,7 +330,8 @@ void EncodedObjectFilter::Put(const byte *inString, size_t length)
 			if (!m_queue.Get(m_id))
 				return;
 			m_queue.TransferTo(CurrentTarget(), 1);
-			m_state = LENGTH;	// fall through
+			m_state = LENGTH;
+		// fall through
 		case LENGTH:
 		{
 			byte b;
@@ -342,7 +343,7 @@ void EncodedObjectFilter::Put(const byte *inString, size_t length)
 				break;
 			}
 			ByteQueue::Walker walker(m_queue);
-			bool definiteLength;
+			bool definiteLength = false;
 			if (!BERLengthDecode(walker, m_lengthRemaining, definiteLength))
 				return;
 			m_queue.TransferTo(CurrentTarget(), walker.GetCurrentPosition());
@@ -356,15 +357,16 @@ void EncodedObjectFilter::Put(const byte *inString, size_t length)
 				m_state = IDENTIFIER;
 				break;
 			}
-			m_state = BODY;		// fall through
+			m_state = BODY;
 		}
+		// fall through
 		case BODY:
 			m_lengthRemaining -= m_queue.TransferTo(CurrentTarget(), m_lengthRemaining);
 
 			if (m_lengthRemaining == 0)
 				m_state = IDENTIFIER;
-
-		case TAIL:			// silence warnings
+		// fall through
+		case TAIL:
 		case ALL_DONE:
 		default: ;;
 		}
