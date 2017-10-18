@@ -35,15 +35,11 @@
 # include <wmmintrin.h>
 #endif
 
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+#if (CRYPTOPP_ARM_NEON_AVAILABLE || CRYPTOPP_ARM_PMULL_AVAILABLE)
 # include <arm_neon.h>
 #endif
 
-// Don't include <arm_acle.h> when using Apple Clang. Early Apple compilers
-//  fail to compile with <arm_acle.h> included. Later Apple compilers compile
-//  intrinsics without <arm_acle.h> included. Also avoid it with GCC 4.8.
-#if (CRYPTOPP_ARM_PMULL_AVAILABLE) && !defined(CRYPTOPP_APPLE_CLANG_VERSION) && \
-	(!defined(CRYPTOPP_GCC_VERSION) || (CRYPTOPP_GCC_VERSION >= 40900))
+#if defined(CRYPTOPP_ARM_ACLE_AVAILABLE)
 # include <arm_acle.h>
 #endif
 
@@ -202,7 +198,9 @@ extern "C" {
 #if (CRYPTOPP_BOOL_ARM32 || CRYPTOPP_BOOL_ARM64)
 bool CPU_ProbePMULL()
 {
-#if (CRYPTOPP_ARM_PMULL_AVAILABLE)
+#if defined(CRYPTOPP_NO_CPU_FEATURE_PROBES)
+	return false;
+#elif (CRYPTOPP_ARM_PMULL_AVAILABLE)
 # if defined(CRYPTOPP_MS_STYLE_INLINE_ASSEMBLY)
     volatile bool result = true;
     __try

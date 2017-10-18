@@ -22,16 +22,15 @@
 # include <immintrin.h>
 #endif
 
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+#if (CRYPTOPP_ARM_SHA_AVAILABLE)
 # include <arm_neon.h>
+# if defined(CRYPTOPP_ARM_ACLE_AVAILABLE)
+#  include <arm_acle.h>
+# endif
 #endif
 
-// Don't include <arm_acle.h> when using Apple Clang. Early Apple compilers
-//  fail to compile with <arm_acle.h> included. Later Apple compilers compile
-//  intrinsics without <arm_acle.h> included. Also avoid it with GCC 4.8.
-#if (CRYPTOPP_ARM_SHA_AVAILABLE) && !defined(CRYPTOPP_APPLE_CLANG_VERSION) && \
-	(!defined(CRYPTOPP_GCC_VERSION) || (CRYPTOPP_GCC_VERSION >= 40900))
-# include <arm_acle.h>
+#if CRYPTOPP_POWER8_SHA_AVAILABLE
+# include "ppc-crypto.h"
 #endif
 
 #ifdef CRYPTOPP_GNU_STYLE_INLINE_ASSEMBLY
@@ -66,7 +65,9 @@ extern "C" {
 #if (CRYPTOPP_BOOL_ARM32 || CRYPTOPP_BOOL_ARM64)
 bool CPU_ProbeSHA1()
 {
-#if (CRYPTOPP_ARM_SHA_AVAILABLE)
+#if defined(CRYPTOPP_NO_CPU_FEATURE_PROBES)
+	return false;
+#elif (CRYPTOPP_ARM_SHA_AVAILABLE)
 # if defined(CRYPTOPP_MS_STYLE_INLINE_ASSEMBLY)
     volatile bool result = true;
     __try
@@ -87,11 +88,6 @@ bool CPU_ProbeSHA1()
     }
     return result;
 # else
-
-# if defined(__APPLE__)
-    // No SIGILL probes on Apple platforms.
-    return false;
-# endif
 
     // longjmp and clobber warnings. Volatile is required.
     // http://github.com/weidai11/cryptopp/issues/24 and http://stackoverflow.com/q/7721854
@@ -131,7 +127,9 @@ bool CPU_ProbeSHA1()
 
 bool CPU_ProbeSHA2()
 {
-#if (CRYPTOPP_ARM_SHA_AVAILABLE)
+#if defined(CRYPTOPP_NO_CPU_FEATURE_PROBES)
+	return false;
+#elif (CRYPTOPP_ARM_SHA_AVAILABLE)
 # if defined(CRYPTOPP_MS_STYLE_INLINE_ASSEMBLY)
     volatile bool result = true;
     __try
@@ -151,11 +149,6 @@ bool CPU_ProbeSHA2()
     }
     return result;
 #else
-
-# if defined(__APPLE__)
-    // No SIGILL probes on Apple platforms.
-    return false;
-# endif
 
     // longjmp and clobber warnings. Volatile is required.
     // http://github.com/weidai11/cryptopp/issues/24 and http://stackoverflow.com/q/7721854
@@ -971,10 +964,41 @@ void SHA256_HashMultipleBlocks_ARMV8(word32 *state, const word32 *data, size_t l
     vst1q_u32(&state[0], STATE0);
     vst1q_u32(&state[4], STATE1);
 }
-#endif
+#endif  // CRYPTOPP_ARM_SHA_AVAILABLE
 
 ///////////////////////////////////////////////////////
 // end of Walton/Schneiders/O'Rourke/Hovsmith's code //
 ///////////////////////////////////////////////////////
+
+// ***************** Power8 SHA ********************
+
+////////////////////////////////////////////////
+// Begin Gustavo Serra Scalet and Walton code //
+////////////////////////////////////////////////
+
+#if CRYPTOPP_POWER8_SHA_AVAILABLE
+void SHA256_HashMultipleBlocks_POWER8(word32 *state, const word32 *data, size_t length, ByteOrder order)
+{
+    CRYPTOPP_ASSERT(state);
+    CRYPTOPP_ASSERT(data);
+    CRYPTOPP_ASSERT(length >= SHA256::BLOCKSIZE);
+
+	CRYPTOPP_ASSERT(0);
+}
+
+void SHA512_HashMultipleBlocks_POWER8(word64 *state, const word64 *data, size_t length, ByteOrder order)
+{
+    CRYPTOPP_ASSERT(state);
+    CRYPTOPP_ASSERT(data);
+    CRYPTOPP_ASSERT(length >= SHA512::BLOCKSIZE);
+
+	CRYPTOPP_ASSERT(0);
+}
+
+#endif  // CRYPTOPP_POWER8_SHA_AVAILABLE
+
+//////////////////////////////////////////////
+// End Gustavo Serra Scalet and Walton code //
+//////////////////////////////////////////////
 
 NAMESPACE_END

@@ -44,18 +44,18 @@ IS_SPARC64 := $(shell uname -m | $(GREP) -i -c "sparc64")
 IS_AIX := $(shell uname -s | $(GREP) -i -c 'aix')
 IS_SUN := $(shell uname -s | $(GREP) -i -c "SunOS")
 
-IS_LINUX := $(shell $(CXX) -dumpmachine 2>&1 | $(GREP) -i -c "Linux")
-IS_MINGW := $(shell $(CXX) -dumpmachine 2>&1 | $(GREP) -i -c "MinGW")
-IS_CYGWIN := $(shell $(CXX) -dumpmachine 2>&1 | $(GREP) -i -c "Cygwin")
-IS_DARWIN := $(shell $(CXX) -dumpmachine 2>&1 | $(GREP) -i -c "Darwin")
-IS_NETBSD := $(shell $(CXX) -dumpmachine 2>&1 | $(GREP) -i -c "NetBSD")
+IS_LINUX := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Linux")
+IS_MINGW := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "MinGW")
+IS_CYGWIN := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Cygwin")
+IS_DARWIN := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Darwin")
+IS_NETBSD := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "NetBSD")
 
-SUN_COMPILER := $(shell $(CXX) -V 2>&1 | $(GREP) -i -c -E 'CC: (Sun|Studio)')
-GCC_COMPILER := $(shell $(CXX) --version 2>&1 | $(GREP) -v -E '(llvm|clang)' | $(GREP) -i -c -E '(gcc|g\+\+)')
-XLC_COMPILER := $(shell $(CXX) $(CXX) -qversion 2>&1 |$(GREP) -i -c "IBM XL")
-CLANG_COMPILER := $(shell $(CXX) --version 2>&1 | $(GREP) -i -c -E '(llvm|clang)')
-INTEL_COMPILER := $(shell $(CXX) --version 2>&1 | $(GREP) -i -c '\(icc\)')
-MACPORTS_COMPILER := $(shell $(CXX) --version 2>&1 | $(GREP) -i -c "macports")
+SUN_COMPILER := $(shell $(CXX) -V 2>/dev/null | $(GREP) -i -c -E 'CC: (Sun|Studio)')
+GCC_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -v -E '(llvm|clang)' | $(GREP) -i -c -E '(gcc|g\+\+)')
+XLC_COMPILER := $(shell $(CXX) $(CXX) -qversion 2>/dev/null |$(GREP) -i -c "IBM XL")
+CLANG_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c -E '(llvm|clang)')
+INTEL_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c '\(icc\)')
+MACPORTS_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c "macports")
 
 # Sun Studio 12.0 provides SunCC 0x0510; and Sun Studio 12.3 provides SunCC 0x0512
 SUNCC_510_OR_LATER := $(shell $(CXX) -V 2>&1 | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[0-9]|5\.[2-9]|6\.)")
@@ -82,6 +82,19 @@ endif
 ifeq ($(IS_SUN),1)
 IS_X86 := $(shell isainfo -k 2>/dev/null | $(GREP) -i -c "i386")
 IS_X64 := $(shell isainfo -k 2>/dev/null | $(GREP) -i -c "amd64")
+endif
+
+# Fixup AIX
+ifeq ($(IS_AIX),1)
+  # https://www-01.ibm.com/support/docview.wss?uid=swg21256116
+  IS_64BIT := $(shell getconf KERNEL_BITMODE | $(GREP) -i -c "64")
+  ifeq ($(IS_64BIT),1)
+    IS_PPC32 := 0
+    IS_PPC64 := 1
+  else
+    IS_PPC32 := 1
+    IS_PPC64 := 0
+  endif
 endif
 
 # Newlib needs _XOPEN_SOURCE=700 for signals
@@ -198,6 +211,11 @@ endif  # -DCRYPTOPP_DISABLE_SSSE3
 endif  # -DCRYPTOPP_DISABLE_ASM
 endif  # CXXFLAGS
 
+ifeq ($(findstring -DCRYPTOPP_DISABLE_ASM,$(CXXFLAGS)),)
+  ifeq ($(IS_X86),1)
+    CPU_FLAG = -msse2
+  endif
+endif
 ifeq ($(findstring -DCRYPTOPP_DISABLE_SSSE3,$(CXXFLAGS)),)
   HAVE_SSSE3 = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -mssse3 -dM -E - 2>/dev/null | $(GREP) -i -c __SSSE3__)
   ifeq ($(HAVE_SSSE3),1)
@@ -334,24 +352,25 @@ ifeq ($(IS_ARMV8),1)
 endif
 
 # PowerPC and PowerPC-64
+# Altivec is available with Power4, but the library is tied to Power7 and unaligned loads/stores.
 ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
   # GCC and some compatibles
-  HAVE_ALTIVEC = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -maltivec -dM -E - 2>/dev/null | $(GREP) -i -c '__ALTIVEC__')
+  HAVE_ALTIVEC = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -mcpu=power7 -maltivec -dM -E - 2>/dev/null | $(GREP) -i -c '__ALTIVEC__')
   ifneq ($(HAVE_ALTIVEC),0)
-    ALTIVEC_FLAG = -maltivec
+    ALTIVEC_FLAG = -mcpu=power7 -maltivec
   endif
   # GCC and some compatibles
-  HAVE_CRYPTO = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -mcpu=power8 -maltivec -mvsx -dM -E - 2>/dev/null | $(GREP) -i -c -E '_ARCH_PWR8|_ARCH_PWR9|__CRYPTO')
+  HAVE_CRYPTO = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -mcpu=power8 -maltivec -dM -E - 2>/dev/null | $(GREP) -i -c -E '_ARCH_PWR8|_ARCH_PWR9|__CRYPTO')
   ifneq ($(HAVE_CRYPTO),0)
-    AES_FLAG = -mcpu=power8 -maltivec -mvsx
-    GCM_FLAG = -mcpu=power8 -maltivec -mvsx
-    SHA_FLAG = -mcpu=power8 -maltivec -mvsx
-    ALTIVEC_FLAG = -mcpu=power8 -maltivec -mvsx
+    AES_FLAG = -mcpu=power8 -maltivec
+    GCM_FLAG = -mcpu=power8 -maltivec
+    SHA_FLAG = -mcpu=power8 -maltivec
+    ALTIVEC_FLAG = -mcpu=power8 -maltivec
   endif
   # IBM XL C/C++
-  HAVE_ALTIVEC = $(shell $(CXX) $(CXXFLAGS) -qshowmacros -qaltivec -E adhoc.cpp.proto 2>/dev/null | $(GREP) -i -c '__ALTIVEC__')
+  HAVE_ALTIVEC = $(shell $(CXX) $(CXXFLAGS) -qshowmacros -qarch=pwr7 -qaltivec -E adhoc.cpp.proto 2>/dev/null | $(GREP) -i -c '__ALTIVEC__')
   ifneq ($(HAVE_ALTIVEC),0)
-    ALTIVEC_FLAG = -qaltivec
+    ALTIVEC_FLAG = -qarch=pwr7 -qaltivec
   endif
   # IBM XL C/C++
   HAVE_CRYPTO = $(shell $(CXX) $(CXXFLAGS) -qshowmacros -qarch=pwr8 -qaltivec -E adhoc.cpp.proto 2>/dev/null | $(GREP) -i -c -E '_ARCH_PWR8|_ARCH_PWR9|__CRYPTO')
@@ -360,6 +379,10 @@ ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
     GCM_FLAG = -qarch=pwr8 -qaltivec
     SHA_FLAG = -qarch=pwr8 -qaltivec
     ALTIVEC_FLAG = -qarch=pwr8 -qaltivec
+  endif
+  # Fail safe to disable intrinsics on down level machines, like PowerMac G5
+  ifeq ($(ALTIVEC_FLAG),)
+    CXXFLAGS += -DCRYPTOPP_DISABLE_ALTIVEC
   endif
 endif
 
@@ -373,13 +396,28 @@ ifeq ($(XLC_COMPILER),1)
   ifneq ($(findstring -fPIC,$(CXXFLAGS)),)
       CXXFLAGS := $(CXXFLAGS:-fPIC=-qpic)
   endif
-  # Warnings and intermittent failures on early IBM XL C/C++
-  ifneq ($(findstring -O3,$(CXXFLAGS)),)
-      CXXFLAGS := $(CXXFLAGS:-O3=-O2)
+  HAVE_BITS=$(shell echo $(CXXFLAGS) | $(GREP) -i -c -E '\-q32|\-q64')
+  ifeq ($(IS_PPC64)$(XLC_COMPILER)$(HAVE_BITS),110)
+    CXXFLAGS += -q64
+  else
+  ifeq ($(IS_PPC32)$(XLC_COMPILER)$(HAVE_BITS),110)
+    CXXFLAGS += -q32
+  endif
+  endif
+  ifeq ($(findstring -q64,$(CXXFLAGS)),-q64)
+    ifeq ($(findstring -X64,$(ARFLAGS)),)
+      ARFLAGS := -r -X64
+    endif
+  else
+  ifeq ($(findstring -q32,$(CXXFLAGS)),-q32)
+    ifeq ($(findstring -X32,$(ARFLAGS)),)
+      ARFLAGS := -r -X32
+    endif
+  endif
   endif
 endif
 
-endif	# IS_X86
+endif  # X86, X64, ARM32, ARM64, PPC32, PPC64, etc
 
 ###########################################################
 #####                      Common                     #####
@@ -391,9 +429,9 @@ ifneq ($(IS_LINUX)$(GCC_COMPILER)$(CLANG_COMPILER)$(INTEL_COMPILER),0000)
   CXXFLAGS += -pthread
 endif # CXXFLAGS
 
-# Add -pipe for everything except IBM XL C/C++ and ARM.
+# Add -pipe for everything except IBM XL C/C++, SunCC and ARM.
 # Allow ARM-64 because they seems to have >1 GB of memory
-ifeq ($(XLC_COMPILER)$(IS_ARM32),00)
+ifeq ($(XLC_COMPILER)$(SUN_COMPILER)$(IS_ARM32),000)
   ifeq ($(findstring -save-temps,$(CXXFLAGS)),)
     CXXFLAGS += -pipe
   endif
@@ -744,10 +782,8 @@ clean:
 .PHONY: distclean
 distclean: clean
 	-$(RM) adhoc.cpp adhoc.cpp.copied cryptopp.mapfile GNUmakefile.deps benchmarks.html cryptest.txt cryptest-*.txt
-	@-$(RM) CMakeCache.txt Makefile CTestTestfile.cmake cmake_install.cmake cryptopp-config-version.cmake
 	@-$(RM) cryptopp.tgz *.o *.bc *.ii *~
 	@-$(RM) -r $(SRCS:.cpp=.obj) *.suo *.sdf *.pdb Win32/ x64/ ipch/
-	@-$(RM) -r CMakeFiles/
 	@-$(RM) -r $(DOCUMENT_DIRECTORY)/
 	@-$(RM) -r TestCoverage/
 	@-$(RM) cryptopp$(LIB_VER)\.*
@@ -854,7 +890,7 @@ dlltest.exe: cryptopp.dll $(DLLTESTOBJS)
 	$(CXX) -o $@ $(strip $(CXXFLAGS)) $(DLLTESTOBJS) -L. -lcryptopp.dll $(LDFLAGS) $(LDLIBS)
 
 # This recipe prepares the distro files
-TEXT_FILES := *.h *.cpp adhoc.cpp.proto License.txt Readme.txt Install.txt Filelist.txt CMakeLists.txt Doxyfile cryptest* cryptlib* dlltest* cryptdll* *.sln *.vcxproj *.filters cryptopp.rc TestVectors/*.txt TestData/*.dat TestScripts/*.sh TestScripts/*.pl TestScripts/*.cmd
+TEXT_FILES := *.h *.cpp adhoc.cpp.proto License.txt Readme.txt Install.txt Filelist.txt Doxyfile cryptest* cryptlib* dlltest* cryptdll* *.sln *.vcxproj *.filters cryptopp.rc TestVectors/*.txt TestData/*.dat TestScripts/*.sh TestScripts/*.pl TestScripts/*.cmd
 EXEC_FILES := GNUmakefile GNUmakefile-cross TestData/ TestVectors/ TestScripts/
 
 ifeq ($(wildcard Filelist.txt),Filelist.txt)
@@ -876,10 +912,10 @@ endif
 .PHONY: convert
 convert:
 	@-$(CHMOD) 0700 TestVectors/ TestData/ TestScripts/
-	@-$(CHMOD) 0600 $(TEXT_FILES) .*.yml *.asm *.s *.zip *.cmake TestVectors/*.txt TestData/*.dat TestScripts/*.*
+	@-$(CHMOD) 0600 $(TEXT_FILES) .*.yml *.asm *.s *.zip TestVectors/*.txt TestData/*.dat TestScripts/*.*
 	@-$(CHMOD) 0700 $(EXEC_FILES) *.sh *.cmd TestScripts/*.sh TestScripts/*.pl TestScripts/*.cmd
 	@-$(CHMOD) 0700 *.cmd *.sh GNUmakefile GNUmakefile-cross TestScripts/*.sh TestScripts/*.pl
-	-unix2dos --keepdate --quiet $(TEXT_FILES) .*.yml *.asm *.cmd *.cmake TestScripts/*.*
+	-unix2dos --keepdate --quiet $(TEXT_FILES) .*.yml *.asm *.cmd TestScripts/*.*
 	-dos2unix --keepdate --quiet GNUmakefile GNUmakefile-cross *.s *.sh *.mapfile TestScripts/*.sh
 ifneq ($(IS_DARWIN),0)
 	@-xattr -c *
@@ -939,6 +975,10 @@ aria-simd.o : aria-simd.cpp
 # SSE4.2 or ARMv8a available
 blake2-simd.o : blake2-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(BLAKE2_FLAG) -c) $<
+
+# SSE2 on i586
+cpu.o : cpu.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(CPU_FLAG) -c) $<
 
 # SSE4.2 or ARMv8a available
 crc-simd.o : crc-simd.cpp

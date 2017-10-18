@@ -845,9 +845,17 @@ public:
 
 	//! \brief Provides the mandatory block size of the cipher
 	//! \return The block size of the cipher if input must be processed in blocks, 1 otherwise
+	//! \details Stream ciphers and some block ciphers modes of operation return 1. Modes that
+	//!   return 1 must be able to process a single byte at a time, like counter mode. If a
+	//!   mode of operation or block cipher cannot stream then it must not return 1.
+	//! \details When filters operate the mode or cipher, ProcessData will be called with a
+	//!   string of bytes that is determined by MandatoryBlockSize and OptimalBlockSize. When a
+	//!   policy is set, like 16-byte strings for a 16-byte block cipher, the filter will buffer
+	//!   bytes until the specified number of bytes is available to the object.
+	//! \sa ProcessData, ProcessLastBlock, MandatoryBlockSize, MinLastBlockSize, BlockPaddingSchemeDef, IsLastBlockSpecial
 	virtual unsigned int MandatoryBlockSize() const {return 1;}
 
-	//! \brief Provides the input block size most efficient for this cipher.
+	//! \brief Provides the input block size most efficient for this cipher
 	//! \return The input block size that is most efficient for the cipher
 	//! \details The base class implementation returns MandatoryBlockSize().
 	//! \note Optimal input length is
@@ -858,7 +866,7 @@ public:
 	//! \return the number of bytes used in the current block when processing at the optimal block size
 	virtual unsigned int GetOptimalBlockSizeUsed() const {return 0;}
 
-	//! \brief Provides input and output data alignment for optimal performance.
+	//! \brief Provides input and output data alignment for optimal performance
 	//! \return the input data alignment that provides optimal performance
 	virtual unsigned int OptimalDataAlignment() const;
 
@@ -866,22 +874,74 @@ public:
 	//! \param outString the output byte buffer
 	//! \param inString the input byte buffer
 	//! \param length the size of the input and output byte buffers, in bytes
-	//! \details Either <tt>inString == outString</tt>, or they must not overlap.
+	//! \details ProcessData is called with a string of bytes whose size depends on MandatoryBlockSize.
+	//!   Either <tt>inString == outString</tt>, or they must not overlap.
+	//! \sa ProcessData, ProcessLastBlock, MandatoryBlockSize, MinLastBlockSize, BlockPaddingSchemeDef, IsLastBlockSpecial
 	virtual void ProcessData(byte *outString, const byte *inString, size_t length) =0;
 
 	//! \brief Encrypt or decrypt the last block of data
 	//! \param outString the output byte buffer
+	//! \param outLength the size of the output byte buffer, in bytes
 	//! \param inString the input byte buffer
-	//! \param length the size of the input and output byte buffers, in bytes
-	//!  ProcessLastBlock is used when the last block of data is special.
-	//!   Currently the only use of this function is CBC-CTS mode.
-	virtual void ProcessLastBlock(byte *outString, const byte *inString, size_t length);
+	//! \param inLength the size of the input byte buffer, in bytes
+	//! \returns the number of bytes used in outString
+	//! \details ProcessLastBlock is used when the last block of data is special and requires handling
+	//!   by the cipher. The current implementation provides an output buffer with a size
+	//!   <tt>inLength+2*MandatoryBlockSize()</tt>. The return value allows the cipher to expand cipher
+	//!   text during encryption or shrink plain text during decryption.
+	//! \details This member function is used by CBC-CTS and OCB modes.
+	//! \sa ProcessData, ProcessLastBlock, MandatoryBlockSize, MinLastBlockSize, BlockPaddingSchemeDef, IsLastBlockSpecial
+	virtual size_t ProcessLastBlock(byte *outString, size_t outLength, const byte *inString, size_t inLength);
 
 	//! \brief Provides the size of the last block
 	//! \returns the minimum size of the last block
 	//! \details MinLastBlockSize() returns the minimum size of the last block. 0 indicates the last
 	//!   block is not special.
+	//! \details MandatoryBlockSize() enlists one of two behaviors. First, if MandatoryBlockSize()
+	//!   returns 1, then the cipher can be streamed and ProcessData() is called with the tail bytes.
+	//!   Second, if MandatoryBlockSize() returns non-0, then the string of bytes is padded to
+	//!   MandatoryBlockSize() according to the padding mode. Then, ProcessData() is called with the
+	//!   padded string of bytes.
+	//! \details Some authenticated encryption modes are not expressed well with MandatoryBlockSize()
+	//!   and MinLastBlockSize(). For example, AES/OCB uses 16-byte blocks (MandatoryBlockSize = 16)
+	//!   and the last block requires special processing (MinLastBlockSize = 0). However, 0 is a valid
+	//!   last block size for OCB and the special processing is custom padding, and not standard PKCS
+	//!   padding. In response an unambiguous IsLastBlockSpecial() was added.
+	//! \sa ProcessData, ProcessLastBlock, MandatoryBlockSize, MinLastBlockSize, BlockPaddingSchemeDef, IsLastBlockSpecial
 	virtual unsigned int MinLastBlockSize() const {return 0;}
+
+	//! \brief Determines if the last block receives special processing
+	//! \returns true if the last block reveives special processing, false otherwise.
+	//! \details Some authenticated encryption modes are not expressed well with
+	//!   MandatoryBlockSize() and MinLastBlockSize(). For example, AES/OCB uses
+	//!   16-byte blocks (MandatoryBlockSize = 16) and the last block requires special processing
+	//!   (MinLastBlockSize = 0). However, 0 is a valid last block size for OCB and the special
+	//!   processing is custom padding, and not standard PKCS padding. In response an
+	//!   unambiguous IsLastBlockSpecial() was added.
+	//!  \details When IsLastBlockSpecial() returns false nothing special happens. All the former
+	//!   rules and behaviors apply. This is the default behavior of IsLastBlockSpecial().
+	//!  \details When IsLastBlockSpecial() returns true four things happen. First, MinLastBlockSize = 0
+	//!   means 0 is a valid block size that should be processed. Second, standard block cipher padding is
+	//!   \a not \a applied. Third, the caller supplies an outString is larger than inString by
+	//!   <tt>2*MandatoryBlockSize()</tt>. That is, there's a reserve available when processing the last block.
+	//!   Fourth, the cipher is responsible for finalization like custom padding. The cipher will tell
+	//!   the library how many bytes were processed or used by returning the appropriate value from
+	//!   ProcessLastBlock().
+	//! \details The return value of ProcessLastBlock() indicates how many bytes were written to
+	//!   <tt>outString</tt>. A filter pipelining data will send <tt>outString</tt> and up to <tt>outLength</tt>
+	//!   to an <tt>AttachedTransformation()</tt> for additional processing. Below is an example of the code
+	//!   used in <tt>StreamTransformationFilter::LastPut</tt>.
+	//! <pre>  if (m_cipher.IsLastBlockSpecial())
+	//!   {
+	//!     size_t reserve = 2*m_cipher.MandatoryBlockSize();
+	//!     space = HelpCreatePutSpace(*AttachedTransformation(), DEFAULT_CHANNEL, length+reserve);
+	//!     length = m_cipher.ProcessLastBlock(space, length+reserve, inString, length);
+	//!     AttachedTransformation()->Put(space, length);
+	//!     return;
+	//!   }</pre>
+	//! \sa ProcessData, ProcessLastBlock, MandatoryBlockSize, MinLastBlockSize, BlockPaddingSchemeDef, IsLastBlockSpecial
+	//! \since Crypto++ 6.0
+	virtual bool IsLastBlockSpecial() const {return false;}
 
 	//! \brief Encrypt or decrypt a string of bytes
 	//! \param inoutString the string to process
@@ -1125,10 +1185,23 @@ protected:
 	const Algorithm & GetAlgorithm() const {return *this;}
 };
 
-//! \brief Interface for one direction (encryption or decryption) of a stream cipher or block cipher mode with authentication
-//! \details The StreamTransformation part of this interface is used to encrypt/decrypt the data, and the
-//!   MessageAuthenticationCode part of this interface is used to input additional authenticated data (AAD,
-//!   which is MAC'ed but not encrypted), and to generate/verify the MAC.
+//! \class AuthenticatedSymmetricCipher
+//! \brief Interface for authenticated encryption modes of operation
+//! \details AuthenticatedSymmetricCipher() provides the interface for one direction
+//!   (encryption or decryption) of a stream cipher or block cipher mode with authentication. The
+//!   StreamTransformation() part of this interface is used to encrypt or decrypt the data. The
+//!   MessageAuthenticationCode() part of the interface is used to input additional authenticated
+//!   data (AAD), which is MAC'ed but not encrypted. The MessageAuthenticationCode() part is also
+//!   used to generate and verify the MAC.
+//! \details Crypto++ provides four authenticated encryption modes of operation - CCM, EAX, GCM
+//!   and OCB mode. All modes implement AuthenticatedSymmetricCipher() and the motivation for
+//!   the API, like calling AAD a &quot;header&quot;, can be found in Bellare, Rogaway and
+//!   Wagner's <A HREF="http://web.cs.ucdavis.edu/~rogaway/papers/eax.pdf">The EAX Mode of
+//!   Operation</A>. The EAX paper suggested a basic API to help standardize AEAD schemes in
+//!   software and promote adoption of the modes.
+//! \sa <A HREF="http://www.cryptopp.com/wiki/Authenticated_Encryption">Authenticated
+//!   Encryption</A> on the Crypto++ wiki.
+//! \since Crypto++ 5.6.0
 class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE AuthenticatedSymmetricCipher : public MessageAuthenticationCode, public StreamTransformation
 {
 public:

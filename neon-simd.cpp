@@ -10,8 +10,16 @@
 #include "config.h"
 #include "stdcpp.h"
 
+#if !(defined(__ARM_NEON) || defined(_MSC_VER))
+# undef CRYPTOPP_ARM_NEON_AVAILABLE
+#endif
+
 #if (CRYPTOPP_ARM_NEON_AVAILABLE)
 # include <arm_neon.h>
+#endif
+
+#if defined(CRYPTOPP_ARM_ACLE_AVAILABLE)
+# include <arm_acle.h>
 #endif
 
 #ifdef CRYPTOPP_GNU_STYLE_INLINE_ASSEMBLY
@@ -39,7 +47,9 @@ extern "C" {
 
 bool CPU_ProbeNEON()
 {
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+#if defined(CRYPTOPP_NO_CPU_FEATURE_PROBES)
+	return false;
+#elif (CRYPTOPP_ARM_NEON_AVAILABLE)
 # if defined(CRYPTOPP_MS_STYLE_INLINE_ASSEMBLY)
 	volatile bool result = true;
 	__try

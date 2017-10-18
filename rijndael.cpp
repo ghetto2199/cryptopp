@@ -124,6 +124,56 @@ const word32 s_rconLE[] = {
 	0x01, 0x02, 0x04, 0x08,	0x10, 0x20, 0x40, 0x80,	0x1B, 0x36
 };
 
+#if CRYPTOPP_BOOL_X64 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X86
+
+// Determine whether the range between begin and end overlaps
+//   with the same 4k block offsets as the Te table. Logically,
+//   the code is trying to create the condition:
+//
+// Two sepearate memory pages:
+//
+//  +-----+   +-----+
+//  |XXXXX|   |YYYYY|
+//  |XXXXX|   |YYYYY|
+//  |     |   |     |
+//  |     |   |     |
+//  +-----+   +-----+
+//  Te Table   Locals
+//
+// Have a logical cache view of (X and Y may be inverted):
+//
+// +-----+
+// |XXXXX|
+// |XXXXX|
+// |YYYYY|
+// |YYYYY|
+// +-----+
+//
+static inline bool AliasedWithTable(const byte *begin, const byte *end)
+{
+	ptrdiff_t s0 = uintptr_t(begin)%4096, s1 = uintptr_t(end)%4096;
+	ptrdiff_t t0 = uintptr_t(Te)%4096, t1 = (uintptr_t(Te)+sizeof(Te))%4096;
+	if (t1 > t0)
+		return (s0 >= t0 && s0 < t1) || (s1 > t0 && s1 <= t1);
+	else
+		return (s0 < t1 || s1 <= t1) || (s0 >= t0 || s1 > t0);
+}
+
+struct Locals
+{
+	word32 subkeys[4*12], workspace[8];
+	const byte *inBlocks, *inXorBlocks, *outXorBlocks;
+	byte *outBlocks;
+	size_t inIncrement, inXorIncrement, outXorIncrement, outIncrement;
+	size_t regSpill, lengthAndCounterFlag, keysBegin;
+};
+
+const size_t s_aliasPageSize = 4096;
+const size_t s_aliasBlockSize = 256;
+const size_t s_sizeToAllocate = s_aliasPageSize + s_aliasBlockSize + sizeof(Locals);
+
+#endif  // CRYPTOPP_BOOL_X64 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X86
+
 ANONYMOUS_NAMESPACE_END
 
 // ************************* Portable Code ************************************
@@ -251,21 +301,28 @@ extern size_t Rijndael_Dec_AdvancedProcessBlocks_ARMV8(const word32 *subkeys, si
 #endif
 
 #if (CRYPTOPP_POWER8_AES_AVAILABLE)
-extern void ByteReverseArrayLE(byte src[16]);
+extern void Rijndael_UncheckedSetKey_POWER8(const byte* userKey, size_t keyLen,
+        word32* rk, const word32* rc, const byte* Se);
 
-extern void Rijndael_Enc_ProcessAndXorBlock_POWER8(const word32 *subkeys, size_t rounds,
-        const byte *inBlock, const byte *xorBlock, byte *outBlock);
-extern void Rijndael_Dec_ProcessAndXorBlock_POWER8(const word32 *subkeys, size_t rounds,
-        const byte *inBlock, const byte *xorBlock, byte *outBlock);
+extern size_t Rijndael_Enc_AdvancedProcessBlocks_POWER8(const word32 *subkeys, size_t rounds,
+        const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
+extern size_t Rijndael_Dec_AdvancedProcessBlocks_POWER8(const word32 *subkeys, size_t rounds,
+        const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 #endif
 
 void Rijndael::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLen, const NameValuePairs &)
 {
 	AssertValidKeyLength(keyLen);
 
+#if CRYPTOPP_BOOL_X64 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X86
+	m_aliasBlock.New(s_sizeToAllocate);
+	// The alias block is only used on IA-32 when unaligned data access is in effect.
+	// Setting the low water mark to 0 avoids zeroization when m_aliasBlock is unused.
+	m_aliasBlock.SetMark(0);
+#endif
+
 	m_rounds = keyLen/4 + 6;
 	m_key.New(4*(m_rounds+1));
-
 	word32 *rk = m_key;
 
 #if (CRYPTOPP_AESNI_AVAILABLE && CRYPTOPP_SSE41_AVAILABLE && (!defined(_MSC_VER) || _MSC_VER >= 1600 || CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32))
@@ -278,6 +335,16 @@ void Rijndael::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLen, c
 		if (!IsForwardTransformation())
 			Rijndael_UncheckedSetKeyRev_AESNI(m_key, m_rounds);
 
+		return;
+	}
+#endif
+
+#if CRYPTOPP_POWER8_AES_AVAILABLE
+	if (HasAES())
+	{
+		// We still need rcon and Se to fallback to C/C++ for AES-192 and AES-256.
+		// The IBM docs on AES sucks. Intel's docs on AESNI puts IBM to shame.
+		Rijndael_UncheckedSetKey_POWER8(userKey, keyLen, rk, rcon, Se);
 		return;
 	}
 #endif
@@ -316,25 +383,6 @@ void Rijndael::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLen, c
 	}
 
 	rk = m_key;
-
-#if CRYPTOPP_POWER8_AES_AVAILABLE
-	if (HasAES())
-	{
-		ConditionalByteReverse(BIG_ENDIAN_ORDER, rk, rk, 16);
-		ConditionalByteReverse(BIG_ENDIAN_ORDER, rk + m_rounds*4, rk + m_rounds*4, 16);
-		ConditionalByteReverse(BIG_ENDIAN_ORDER, rk+4, rk+4, (m_rounds-1)*16);
-
-#if defined(IS_LITTLE_ENDIAN)
-		// VSX registers are big-endian. The entire subkey table must be byte
-		// reversed on little-endian systems to ensure it loads properly.
-		byte * ptr = reinterpret_cast<byte*>(rk);
-		for (unsigned int i=0; i<=m_rounds; i++)
-			ByteReverseArrayLE(ptr+i*16);
-#endif  // IS_LITTLE_ENDIAN
-
-		return;
-	}
-#endif  // CRYPTOPP_POWER8_AES_AVAILABLE
 
 	if (IsForwardTransformation())
 	{
@@ -408,7 +456,7 @@ void Rijndael::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock
 #if (CRYPTOPP_POWER8_AES_AVAILABLE)
 	if (HasAES())
 	{
-		(void)Rijndael_Enc_ProcessAndXorBlock_POWER8(m_key, m_rounds, inBlock, xorBlock, outBlock);
+		(void)Rijndael::Enc::AdvancedProcessBlocks(inBlock, xorBlock, outBlock, 16, 0);
 		return;
 	}
 #endif
@@ -502,7 +550,7 @@ void Rijndael::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock
 #if (CRYPTOPP_POWER8_AES_AVAILABLE)
 	if (HasAES())
 	{
-		(void)Rijndael_Dec_ProcessAndXorBlock_POWER8(m_key, m_rounds, inBlock, xorBlock, outBlock);
+		(void)Rijndael::Dec::AdvancedProcessBlocks(inBlock, xorBlock, outBlock, 16, 0);
 		return;
 	}
 #endif
@@ -1078,63 +1126,6 @@ void Rijndael_Enc_AdvancedProcessBlocks(void *locals, const word32 *k);
 }
 #endif
 
-#if CRYPTOPP_BOOL_X64 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X86
-
-// Determine whether the range between begin and end overlaps
-//   with the same 4k block offsets as the Te table. Logically,
-//   the code is trying to create the condition:
-//
-// Two sepearate memory pages:
-//
-//  +-----+   +-----+
-//  |XXXXX|   |YYYYY|
-//  |XXXXX|   |YYYYY|
-//  |     |   |     |
-//  |     |   |     |
-//  +-----+   +-----+
-//  Te Table   Locals
-//
-// Have a logical cache view of (X and Y may be inverted):
-//
-// +-----+
-// |XXXXX|
-// |XXXXX|
-// |YYYYY|
-// |YYYYY|
-// +-----+
-//
-static inline bool AliasedWithTable(const byte *begin, const byte *end)
-{
-	ptrdiff_t s0 = uintptr_t(begin)%4096, s1 = uintptr_t(end)%4096;
-	ptrdiff_t t0 = uintptr_t(Te)%4096, t1 = (uintptr_t(Te)+sizeof(Te))%4096;
-	if (t1 > t0)
-		return (s0 >= t0 && s0 < t1) || (s1 > t0 && s1 <= t1);
-	else
-		return (s0 < t1 || s1 <= t1) || (s0 >= t0 || s1 > t0);
-}
-
-struct Locals
-{
-	word32 subkeys[4*12], workspace[8];
-	const byte *inBlocks, *inXorBlocks, *outXorBlocks;
-	byte *outBlocks;
-	size_t inIncrement, inXorIncrement, outXorIncrement, outIncrement;
-	size_t regSpill, lengthAndCounterFlag, keysBegin;
-};
-
-const size_t s_aliasPageSize = 4096;
-const size_t s_aliasBlockSize = 256;
-const size_t s_sizeToAllocate = s_aliasPageSize + s_aliasBlockSize + sizeof(Locals);
-
-Rijndael::Enc::Enc() : m_aliasBlock(s_sizeToAllocate) { }
-
-#endif  // CRYPTOPP_BOOL_X64 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X86
-
-#if CRYPTOPP_BOOL_ARM32 || CRYPTOPP_BOOL_ARM64
-// Do nothing
-Rijndael::Enc::Enc() { }
-#endif
-
 #if CRYPTOPP_ENABLE_ADVANCED_PROCESS_BLOCKS
 size_t Rijndael::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags) const
 {
@@ -1146,6 +1137,10 @@ size_t Rijndael::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xo
 	if (HasAES())
 		return Rijndael_Enc_AdvancedProcessBlocks_ARMV8(m_key, m_rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 #endif
+#if CRYPTOPP_POWER8_AES_AVAILABLE
+	if (HasAES())
+		return Rijndael_Enc_AdvancedProcessBlocks_POWER8(m_key, m_rounds, inBlocks, xorBlocks, outBlocks, length, flags);
+#endif
 
 #if (CRYPTOPP_SSE2_ASM_AVAILABLE || defined(CRYPTOPP_X64_MASM_AVAILABLE)) && !defined(CRYPTOPP_DISABLE_RIJNDAEL_ASM)
 	if (HasSSE2())
@@ -1154,6 +1149,7 @@ size_t Rijndael::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xo
 			return length;
 
 		static const byte *zeros = (const byte*)(Te+256);
+		m_aliasBlock.SetMark(m_aliasBlock.size());
 		byte *space = NULLPTR, *originalSpace = const_cast<byte*>(m_aliasBlock.data());
 
 		// round up to nearest 256 byte boundary
@@ -1205,10 +1201,13 @@ size_t Rijndael::Dec::AdvancedProcessBlocks(const byte *inBlocks, const byte *xo
 	if (HasAESNI())
 		return Rijndael_Dec_AdvancedProcessBlocks_AESNI(m_key, m_rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 #endif
-
 #if CRYPTOPP_ARM_AES_AVAILABLE
 	if (HasAES())
 		return Rijndael_Dec_AdvancedProcessBlocks_ARMV8(m_key, m_rounds, inBlocks, xorBlocks, outBlocks, length, flags);
+#endif
+#if CRYPTOPP_POWER8_AES_AVAILABLE
+	if (HasAES())
+		return Rijndael_Dec_AdvancedProcessBlocks_POWER8(m_key, m_rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 #endif
 
 	return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);

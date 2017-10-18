@@ -541,11 +541,22 @@ NAMESPACE_END
 #if (CRYPTOPP_BOOL_ARM32 || CRYPTOPP_BOOL_ARM64)
 
 // Requires ARMv7 and ACLE 1.0. Testing shows ARMv7 is really ARMv7a under most toolchains.
+// Android still uses ARMv5 and ARMv6 so we have to be conservative when enabling NEON.
 #if !defined(CRYPTOPP_ARM_NEON_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ASM)
-# if defined(__ARM_NEON__) || defined(__ARM_FEATURE_NEON) || (CRYPTOPP_MSC_VERSION >= 1700) || \
-	(CRYPTOPP_GCC_VERSION >= 40800) || (CRYPTOPP_LLVM_CLANG_VERSION >= 30500)
+# if defined(__ARM_NEON__) || defined(__ARM_FEATURE_NEON) || \
+	(__ARM_ARCH >= 7) || (CRYPTOPP_MSC_VERSION >= 1700)
 #  define CRYPTOPP_ARM_NEON_AVAILABLE 1
 # endif
+#endif
+
+// Don't include <arm_acle.h> when using Apple Clang. Early Apple compilers
+//  fail to compile with <arm_acle.h> included. Later Apple compilers compile
+//  intrinsics without <arm_acle.h> included. Also avoid it with GCC 4.8,
+//  and avoid it on Android, too.
+#if !defined(CRYPTOPP_APPLE_CLANG_VERSION) && \
+	(!defined(CRYPTOPP_GCC_VERSION) || (CRYPTOPP_GCC_VERSION >= 40900)) && \
+	!defined(__ANDROID__)
+#  define CRYPTOPP_ARM_ACLE_AVAILABLE 1
 #endif
 
 // Requires ARMv8 and ACLE 2.0. GCC requires 4.8 and above.
@@ -553,8 +564,8 @@ NAMESPACE_END
 // Microsoft plans to support ARM-64, but its not clear how to detect it.
 // TODO: Add MSC_VER and ARM-64 platform define when available
 #if !defined(CRYPTOPP_ARM_CRC32_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ASM) && !defined(__apple_build_version__)
-# if defined(__ARM_FEATURE_CRC32) || (CRYPTOPP_MSC_VERSION >= 1910) || \
-	defined(__aarch32__) || defined(__aarch64__)
+# if (defined(__ARM_FEATURE_CRC32) || (CRYPTOPP_MSC_VERSION >= 1910) || \
+	defined(__aarch32__) || defined(__aarch64__))
 #  define CRYPTOPP_ARM_CRC32_AVAILABLE 1
 # endif
 #endif
@@ -589,20 +600,23 @@ NAMESPACE_END
 
 #if (CRYPTOPP_BOOL_PPC32 || CRYPTOPP_BOOL_PPC64)
 
-// An old Apple G5 with GCC 4.01 has AltiVec.
-#if !defined(CRYPTOPP_ALTIVEC_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ASM)
-# if defined(__ALTIVEC__) || (CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40000)
+// An old Apple G5 with GCC 4.01 has AltiVec, but its only Power4 or so.
+// We need Power7 or above, so the makefile defines CRYPTOPP_DISABLE_ALTIVEC.
+#if !defined(CRYPTOPP_POWER7_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ALTIVEC) && !defined(CRYPTOPP_DISABLE_ASM)
+# if defined(_ARCH_PWR7) || (CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40000)
 #  define CRYPTOPP_ALTIVEC_AVAILABLE 1
+#  define CRYPTOPP_POWER7_AVAILABLE 1
 # endif
 #endif
 
-#if !defined(CRYPTOPP_POWER8_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ASM)
+#if !defined(CRYPTOPP_POWER8_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ALTIVEC) && !defined(CRYPTOPP_DISABLE_ASM)
 # if defined(_ARCH_PWR8) || (CRYPTOPP_XLC_VERSION >= 130000) || (CRYPTOPP_GCC_VERSION >= 40800)
+#  define CRYPTOPP_ALTIVEC_AVAILABLE 1
 #  define CRYPTOPP_POWER8_AVAILABLE 1
 # endif
 #endif
 
-#if !defined(CRYPTOPP_POWER8_CRYPTO_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ASM)
+#if !defined(CRYPTOPP_POWER8_CRYPTO_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ALTIVEC) && !defined(CRYPTOPP_DISABLE_ASM)
 # if defined(__CRYPTO__) || defined(_ARCH_PWR8) || (CRYPTOPP_XLC_VERSION >= 130000) || (CRYPTOPP_GCC_VERSION >= 40800)
 #  define CRYPTOPP_POWER8_AES_AVAILABLE 1
 //#  define CRYPTOPP_POWER8_SHA_AVAILABLE 1
@@ -626,7 +640,7 @@ NAMESPACE_END
 	#define CRYPTOPP_MM_MALLOC_AVAILABLE
 #elif defined(__APPLE__)
 	#define CRYPTOPP_APPLE_MALLOC_AVAILABLE
-#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
+#elif defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(_AIX)
 	#define CRYPTOPP_MALLOC_ALIGNMENT_IS_16
 #elif defined(__linux__) || defined(__sun__) || defined(__CYGWIN__)
 	#define CRYPTOPP_MEMALIGN_AVAILABLE
@@ -638,7 +652,10 @@ NAMESPACE_END
 #if defined(_MSC_VER)
 #	define CRYPTOPP_NOINLINE_DOTDOTDOT
 #	define CRYPTOPP_NOINLINE __declspec(noinline)
-#elif defined(__GNUC__) || defined(__xlC__)
+#elif defined(__xlc__) || defined(__xlC__)
+#	define CRYPTOPP_NOINLINE_DOTDOTDOT ...
+#	define CRYPTOPP_NOINLINE __attribute__((noinline))
+#elif defined(__GNUC__)
 #	define CRYPTOPP_NOINLINE_DOTDOTDOT
 #	define CRYPTOPP_NOINLINE __attribute__((noinline))
 #else
@@ -647,10 +664,22 @@ NAMESPACE_END
 #endif
 
 // How to declare class constants
-#if defined(CRYPTOPP_DOXYGEN_PROCESSING)
+#if defined(CRYPTOPP_DOXYGEN_PROCESSING) || defined(__BORLANDC__)
 # define CRYPTOPP_CONSTANT(x) static const int x;
 #else
 # define CRYPTOPP_CONSTANT(x) enum {x};
+#endif
+
+// How to disable CPU feature probing. We determine machine
+//  capabilities by performing an os/platform *query* first,
+//  like getauxv(). If the *query* fails, we move onto a
+//  cpu *probe*. The cpu *probe* tries to exeute an instruction
+//  and then catches a SIGILL on Linux or the exception
+//  EXCEPTION_ILLEGAL_INSTRUCTION on Windows. Some OSes
+//  fail to hangle a SIGILL gracefully, like Apple OSes. Apple
+//  machines corrupt memory and variables around the probe.
+#if defined(__APPLE__)
+#  define CRYPTOPP_NO_CPU_FEATURE_PROBES 1
 #endif
 
 // ***************** Initialization and Constructor priorities ********************

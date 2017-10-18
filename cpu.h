@@ -398,7 +398,7 @@ inline bool HasSHA2()
 // Hide from Doxygen
 #ifndef CRYPTOPP_DOXYGEN_PROCESSING
 extern bool g_PowerpcDetectionDone;
-extern bool g_hasAltivec, g_hasPower7, g_hasPower8, g_hasAES, g_hasSHA1, g_hasSHA2;
+extern bool g_hasAltivec, g_hasPower7, g_hasPower8, g_hasAES, g_hasSHA256, g_hasSHA512;
 extern word32 g_cacheLineSize;
 void CRYPTOPP_API DetectPowerpcFeatures();
 #endif  // CRYPTOPP_DOXYGEN_PROCESSING
@@ -407,8 +407,11 @@ void CRYPTOPP_API DetectPowerpcFeatures();
 //! \returns true if the hardware is capable of Altivec at runtime, false otherwise.
 //! \details Altivec instructions are available under most modern PowerPCs.
 //! \details Runtime support requires compile time support. When compiling with GCC, you may
-//!   need to compile with <tt>-mcpu=power8</tt>; while IBM XL C/C++ compilers require
-//!   <tt>-qarch=pwr8 -qaltivec</tt>. Also see PowerPC's <tt>_ALTIVEC_</tt> preprocessor macro.
+//!   need to compile with <tt>-mcpu=power7</tt>; while IBM XL C/C++ compilers require
+//!   <tt>-qarch=pwr7 -qaltivec</tt>. Also see PowerPC's <tt>_ALTIVEC_</tt> preprocessor macro.
+//! \details Atilvec was first available on Power4 platforms. However Crypto++ releies on unaligned
+//!   loads and stores which is a Power7 feature. If the platform lacks Power7 extensions, then the
+//!   GNUmakefile sets <tt>-DCRYPTOPP_DISABLE_ALTIVEC</tt>.
 //! \note This function is only available on PowerPC and PowerPC-64 platforms
 inline bool HasAltivec()
 {
@@ -423,6 +426,26 @@ inline bool HasAltivec()
 //! \details Runtime support requires compile time support. When compiling with GCC, you may
 //!   need to compile with <tt>-mcpu=power8</tt>; while IBM XL C/C++ compilers require
 //!   <tt>-qarch=pwr8 -qaltivec</tt>. Also see PowerPC's <tt>_ALTIVEC_</tt> preprocessor macro.
+//! \details Atilvec was first available on Power4 platforms. However Crypto++ releies on unaligned
+//!   loads and stores which is a Power7 feature. If the platform lacks Power7 extensions, then the
+//!   GNUmakefile sets <tt>-DCRYPTOPP_DISABLE_ALTIVEC</tt>.
+//! \note This function is only available on PowerPC and PowerPC-64 platforms
+inline bool HasPower7()
+{
+	if (!g_PowerpcDetectionDone)
+		DetectPowerpcFeatures();
+	return g_hasPower7;
+}
+
+//! \brief Determine if a PowerPC processor has Power8 available
+//! \returns true if the hardware is capable of Power8 at runtime, false otherwise.
+//! \details Altivec instructions are available under most modern PowerPCs.
+//! \details Runtime support requires compile time support. When compiling with GCC, you may
+//!   need to compile with <tt>-mcpu=power8</tt>; while IBM XL C/C++ compilers require
+//!   <tt>-qarch=pwr8 -qaltivec</tt>. Also see PowerPC's <tt>_ALTIVEC_</tt> preprocessor macro.
+//! \details Atilvec was first available on Power4 platforms. However Crypto++ releies on unaligned
+//!   loads and stores which is a Power7 feature. If the platform lacks Power7 extensions, then the
+//!   GNUmakefile sets <tt>-DCRYPTOPP_DISABLE_ALTIVEC</tt>.
 //! \note This function is only available on PowerPC and PowerPC-64 platforms
 inline bool HasPower8()
 {
@@ -445,32 +468,32 @@ inline bool HasAES()
 	return g_hasAES;
 }
 
-//! \brief Determine if a PowerPC processor has SHA1 available
-//! \returns true if the hardware is capable of SHA1 at runtime, false otherwise.
+//! \brief Determine if a PowerPC processor has SHA256 available
+//! \returns true if the hardware is capable of SHA256 at runtime, false otherwise.
 //! \details SHA is part of the in-crypto extensions on Power8 and Power9.
 //! \details Runtime support requires compile time support. When compiling with GCC, you may
 //!   need to compile with <tt>-mcpu=power8</tt>; while IBM XL C/C++ compilers require
 //!   <tt>-qarch=pwr8 -qaltivec</tt>. Also see PowerPC's <tt>__CRYPTO</tt> preprocessor macro.
 //! \note This function is only available on PowerPC and PowerPC-64 platforms
-inline bool HasSHA1()
+inline bool HasSHA256()
 {
 	if (!g_PowerpcDetectionDone)
 		DetectPowerpcFeatures();
-	return g_hasSHA1;
+	return g_hasSHA256;
 }
 
-//! \brief Determine if a PowerPC processor has SHA2 available
-//! \returns true if the hardware is capable of SHA2 at runtime, false otherwise.
+//! \brief Determine if a PowerPC processor has SHA512 available
+//! \returns true if the hardware is capable of SHA512 at runtime, false otherwise.
 //! \details SHA is part of the in-crypto extensions on Power8 and Power9.
 //! \details Runtime support requires compile time support. When compiling with GCC, you may
 //!   need to compile with <tt>-mcpu=power8</tt>; while IBM XL C/C++ compilers require
 //!   <tt>-qarch=pwr8 -qaltivec</tt>. Also see PowerPC's <tt>__CRYPTO</tt> preprocessor macro.
 //! \note This function is only available on PowerPC and PowerPC-64 platforms
-inline bool HasSHA2()
+inline bool HasSHA512()
 {
 	if (!g_PowerpcDetectionDone)
 		DetectPowerpcFeatures();
-	return g_hasSHA2;
+	return g_hasSHA512;
 }
 
 //! \brief Provides the cache line size

@@ -11,8 +11,10 @@
 #include "misc.h"
 
 // We set CRYPTOPP_ARM_CRC32_AVAILABLE based on compiler version.
-// If the crypto is not available, then we have to disable it here.
-#if !(defined(__ARM_FEATURE_CRC32) || defined(_MSC_VER))
+// If the crc is not available, then we have to disable it here.
+// Android does not provide -march=armv8-a+crc or -march=armv8.1-a+crc, so
+// it looks like we will have to disable CRC acceleration of their devices.
+#if !(defined(__ARM_FEATURE_CRC32) || defined(_MSC_VER)) || defined(__ANDROID__)
 # undef CRYPTOPP_ARM_CRC32_AVAILABLE
 #endif
 
@@ -20,16 +22,11 @@
 # include <nmmintrin.h>
 #endif
 
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+#if (CRYPTOPP_ARM_CRC32_AVAILABLE)
 # include <arm_neon.h>
-#endif
-
-// Don't include <arm_acle.h> when using Apple Clang. Early Apple compilers
-//  fail to compile with <arm_acle.h> included. Later Apple compilers compile
-//  intrinsics without <arm_acle.h> included. Also avoid it with GCC 4.8.
-#if (CRYPTOPP_ARM_CRC32_AVAILABLE) && !defined(CRYPTOPP_APPLE_CLANG_VERSION) && \
-	(!defined(CRYPTOPP_GCC_VERSION) || (CRYPTOPP_GCC_VERSION >= 40900))
-# include <arm_acle.h>
+# if defined(CRYPTOPP_ARM_ACLE_AVAILABLE)
+#  include <arm_acle.h>
+# endif
 #endif
 
 #ifdef CRYPTOPP_GNU_STYLE_INLINE_ASSEMBLY
@@ -59,7 +56,9 @@ extern "C" {
 
 bool CPU_ProbeCRC32()
 {
-#if (CRYPTOPP_ARM_CRC32_AVAILABLE)
+#if defined(CRYPTOPP_NO_CPU_FEATURE_PROBES)
+	return false;
+#elif (CRYPTOPP_ARM_CRC32_AVAILABLE)
 # if defined(CRYPTOPP_MS_STYLE_INLINE_ASSEMBLY)
     volatile bool result = true;
     __try
@@ -80,11 +79,6 @@ bool CPU_ProbeCRC32()
     }
     return result;
 #else
-
-# if defined(__APPLE__)
-    // No SIGILL probes on Apple platforms.
-    return false;
-# endif
 
     // longjmp and clobber warnings. Volatile is required.
     // http://github.com/weidai11/cryptopp/issues/24 and http://stackoverflow.com/q/7721854

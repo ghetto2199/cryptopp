@@ -26,10 +26,6 @@ unset AOSP_STL_INC
 unset AOSP_STL_LIB
 unset AOSP_BITS_INC
 
-# Former variables
-unset ANDROID_FLAGS ANDROID_SYSROOT
-unset ANDROID_STL_INC ANDROID_STL_LIB
-
 # Tools set by this script
 unset CPP CC CXX LD AS AR RANLIB STRIP
 
@@ -71,13 +67,13 @@ fi
 #   like ANDROID_NDK_ROOT=/opt/android-ndk-r10e or ANDROID_NDK_ROOT=/usr/local/android-ndk-r10e.
 
 if [ -z "${ANDROID_NDK_ROOT-}" ]; then
-	ANDROID_NDK_ROOT=$(find /opt -maxdepth 1 -type d -name android-ndk-r10* 2>/dev/null | tail -1)
+	ANDROID_NDK_ROOT=$(find /opt -maxdepth 1 -type d -name android-ndk* 2>/dev/null | tail -1)
 
 	if [ -z "$ANDROID_NDK_ROOT" ]; then
-		ANDROID_NDK_ROOT=$(find /usr/local -maxdepth 1 -type d -name android-ndk-r10* 2>/dev/null | tail -1)
+		ANDROID_NDK_ROOT=$(find /usr/local -maxdepth 1 -type d -name android-ndk* 2>/dev/null | tail -1)
 	fi
 	if [ -z "$ANDROID_NDK_ROOT" ]; then
-		ANDROID_NDK_ROOT=$(find $HOME -maxdepth 1 -type d -name android-ndk-r10* 2>/dev/null | tail -1)
+		ANDROID_NDK_ROOT=$(find $HOME -maxdepth 1 -type d -name android-ndk* 2>/dev/null | tail -1)
 	fi
 	if [ -d "$HOME/Library/Android/sdk/ndk-bundle" ]; then
 		ANDROID_NDK_ROOT="$HOME/Library/Android/sdk/ndk-bundle"
@@ -93,7 +89,7 @@ fi
 #####################################################################
 
 if [ "$#" -lt 1 ]; then
-	THE_ARCH=armv7
+	THE_ARCH=armv7a-neon
 else
 	THE_ARCH=$(tr [A-Z] [a-z] <<< "$1")
 fi
@@ -107,7 +103,7 @@ case "$THE_ARCH" in
 	AOSP_ARCH="arch-arm"
 	AOSP_FLAGS="-march=armv5te -mtune=xscale -mthumb -msoft-float -funwind-tables -fexceptions -frtti"
 	;;
-  armv7a|armeabi-v7a)
+  armv7a|armv7-a|armeabi-v7a)
 	TOOLCHAIN_ARCH="arm-linux-androideabi"
 	TOOLCHAIN_NAME="arm-linux-androideabi"
 	AOSP_ABI="armeabi-v7a"
@@ -154,7 +150,7 @@ case "$THE_ARCH" in
 	TOOLCHAIN_NAME="i686-linux-android"
 	AOSP_ABI="x86"
 	AOSP_ARCH="arch-x86"
-	AOSP_FLAGS="-march=i686 -mtune=intel -mssse3 -mfpmath=sse -funwind-tables -fexceptions -frtti"
+	AOSP_FLAGS="-mtune=intel -mssse3 -mfpmath=sse -funwind-tables -fexceptions -frtti"
 	;;
   x86_64|x64)
 	TOOLCHAIN_ARCH="x86_64"
@@ -174,9 +170,6 @@ esac
 # GNUmakefile-cross expects these to be set. They are also used in the tests below.
 export IS_ANDROID=1
 export AOSP_FLAGS
-
-# TODO: for the previous GNUmakefile-cross. These can go away eventually.
-export ANDROID_FLAGS=$AOSP_FLAGS
 
 export CPP="$TOOLCHAIN_NAME-cpp"
 export CC="$TOOLCHAIN_NAME-gcc"
@@ -274,9 +267,6 @@ fi
 #   http://android.googlesource.com/platform/ndk/+/ics-mr0/docs/STANDALONE-TOOLCHAIN.html
 export AOSP_SYSROOT="$ANDROID_NDK_ROOT/platforms/$AOSP_API/$AOSP_ARCH"
 
-# TODO: export for the previous GNUmakefile-cross. These can go away eventually.
-export ANDROID_SYSROOT=$AOSP_SYSROOT
-
 #####################################################################
 
 # Android STL. We support GNU, LLVM and STLport out of the box.
@@ -348,13 +338,25 @@ fi
 export AOSP_STL_INC
 export AOSP_STL_LIB
 
-# TODO: for the previous GNUmakefile-cross. These can go away eventually.
-export ANDROID_STL_INC=$AOSP_STL_INC
-export ANDROID_STL_LIB=$AOSP_STL_LIB
-
 if [ ! -z "$AOSP_BITS_INC" ]; then
 	export AOSP_BITS_INC
 fi
+
+# Now that we are using cpu-features from Android rather than CPU probing, we
+# need to copy cpu-features.h and cpu-features.c from the NDK into our source
+# directory and then build it.
+
+if [[ ! -e "$ANDROID_NDK_ROOT/sources/android/cpufeatures/cpu-features.h" ]]; then
+	echo "ERROR: Unable to locate cpu-features.h"
+	[ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+fi
+cp "$ANDROID_NDK_ROOT/sources/android/cpufeatures/cpu-features.h" .
+
+if [[ ! -e "$ANDROID_NDK_ROOT/sources/android/cpufeatures/cpu-features.c" ]]; then
+	echo "ERROR: Unable to locate cpu-features.c"
+	[ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+fi
+cp "$ANDROID_NDK_ROOT/sources/android/cpufeatures/cpu-features.c" .
 
 #####################################################################
 
@@ -370,6 +372,10 @@ if [ ! -z "$VERBOSE" ] && [ "$VERBOSE" != "0" ]; then
   echo "AOSP_STL_LIB: $AOSP_STL_LIB"
   if [ ! -z "$AOSP_BITS_INC" ]; then
     echo "AOSP_BITS_INC: $AOSP_BITS_INC"
+  fi
+
+  if [ -e "cpu-features.h" ] && [ -e "cpu-features.c" ]; then
+    echo "CPU FEATURES: cpu-features.h and cpu-features.c are present"
   fi
 fi
 
@@ -396,7 +402,7 @@ if [[ ("$COUNT" -ne "0") ]]; then
 	echo "*******************************************************************************"
 fi
 
-COUNT=$(echo -n "$AOSP_STL_LIB" | egrep -i -c 'libc\+\+)')
+COUNT=$(echo -n "$AOSP_STL_LIB" | egrep -i -c 'libc\+\+')
 if [[ ("$COUNT" -ne "0") ]]; then
 	echo
 	echo "*******************************************************************************"

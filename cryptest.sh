@@ -88,9 +88,10 @@ elif [[ (-d /usr/bin/posix) ]]; then
 fi
 
 # Fixup, Solaris and BSDs
-GMAKE=$(which gmake 2>/dev/null | "$GREP" -v "no gmake" | head -1)
-if [[ ! -z "$GMAKE" ]]; then
-	MAKE=$GMAKE
+if [[ $(command -v gmake 2>/dev/null) ]]; then
+	MAKE="gmake"
+else
+	MAKE="make"
 fi
 
 THIS_SYSTEM=$(uname -s 2>&1)
@@ -172,33 +173,33 @@ done
 #   mis-detections occur on a number of platforms.
 if [[ ((-z "$CXX") || ("$CXX" == "gcc")) ]]; then
 	if [[ ("$CXX" == "gcc") ]]; then
-		CXX=g++
+		CXX="g++"
 	elif [[ "$IS_DARWIN" -ne "0" ]]; then
-		CXX=c++
+		CXX="c++"
 	elif [[ "$IS_SOLARIS" -ne "0" ]]; then
 		if [[ (-e "/opt/developerstudio12.5/bin/CC") ]]; then
-			CXX=/opt/developerstudio12.5/bin/CC
+			CXX="/opt/developerstudio12.5/bin/CC"
 		elif [[ (-e "/opt/solarisstudio12.4/bin/CC") ]]; then
-			CXX=/opt/solarisstudio12.4/bin/CC
+			CXX="/opt/solarisstudio12.4/bin/CC"
 		elif [[ (-e "/opt/solarisstudio12.3/bin/CC") ]]; then
-			CXX=/opt/solarisstudio12.3/bin/CC
+			CXX="/opt/solarisstudio12.3/bin/CC"
 		elif [[ (-e "/opt/solstudio12.2/bin/CC") ]]; then
-			CXX=/opt/solstudio12.2/bin/CC
+			CXX="/opt/solstudio12.2/bin/CC"
 		elif [[ (-e "/opt/solstudio12.1/bin/CC") ]]; then
-			CXX=/opt/solstudio12.1/bin/CC
+			CXX="/opt/solstudio12.1/bin/CC"
 		elif [[ (-e "/opt/solstudio12.0/bin/CC") ]]; then
-			CXX=/opt/solstudio12.0/bin/CC
-		elif [[ (! -z $(which CC 2>/dev/null | "$GREP" -v "no CC" | head -1)) ]]; then
-			CXX=$(which CC | head -1)
-		elif [[ (! -z $(which g++ 2>/dev/null | "$GREP" -v "no g++" | head -1)) ]]; then
-			CXX=$(which g++ | head -1)
+			CXX="/opt/solstudio12.0/bin/CC"
+		elif [[ $(command -v CC 2>/dev/null) ]]; then
+			CXX="CC"
+		elif [[ $(command -v g++ 2>/dev/null) ]]; then
+			CXX="g++"
 		else
 			CXX=CC
 		fi
-	elif [[ ($(which g++ 2>&1 | "$GREP" -v "no g++" | "$GREP" -i -c g++) -ne "0") ]]; then
-		CXX=g++
+	elif [[ $(command -v g++ 2>/dev/null) ]]; then
+		CXX="g++"
 	else
-		CXX=c++
+		CXX="c++"
 	fi
 fi
 
@@ -208,6 +209,7 @@ XLC_COMPILER=$("$CXX" -qversion 2>&1 | "$GREP" -i -c "IBM XL")
 INTEL_COMPILER=$("$CXX" --version 2>&1 | "$GREP" -i -c "\(icc\)")
 MACPORTS_COMPILER=$("$CXX" --version 2>&1 | "$GREP" -i -c "MacPorts")
 CLANG_COMPILER=$("$CXX" --version 2>&1 | "$GREP" -i -c "clang")
+GNU_LINKER=$(ld --version 2>&1 | "$GREP" -i -c "GNU ld")
 
 if [[ ("$SUN_COMPILER" -eq "0") ]]; then
 	AMD64=$("$CXX" -dM -E - </dev/null 2>/dev/null | "$GREP" -i -c -E "(__x64_64__|__amd64__)")
@@ -238,7 +240,7 @@ fi
 
 # GCC compile farm is mounted RO
 if [[ (-z "$TMPDIR") ]]; then
-	if [[ (-d "/tmp") ]] && [[ `touch "/tmp/ok-to-delete" &>/dev/null` ]]; then
+	if [[ (-d "/tmp") ]] && [[ $(touch "/tmp/ok-to-delete" &>/dev/null) ]]; then
 		TMPDIR=/tmp
 	elif [[ (-d "/temp") ]]; then
 		TMPDIR=/temp
@@ -246,7 +248,7 @@ if [[ (-z "$TMPDIR") ]]; then
 		TMPDIR="$HOME/tmp"
 	else
 		echo "Please set TMPDIR to a valid directory"
-		[[ "$0" = "$BASH_SOURCE" ]] && exit 1 || return 1
+		[[ "$0" = "${BASH_SOURCE[0]}" ]] && exit 1 || return 1
 	fi
 fi
 
@@ -587,8 +589,8 @@ fi
 # ld-gold linker testing
 if [[ (-z "$HAVE_LDGOLD") ]]; then
 	HAVE_LDGOLD=0
-	LD_GOLD=$(which ld.gold 2>&1 | "$GREP" -v "no ld.gold" | head -1)
-	ELF_FILE=$(which file 2>&1 | "$GREP" -v "no file" | head -1)
+	LD_GOLD=$(command -v ld.gold 2>/dev/null)
+	ELF_FILE=$(command -v file 2>/dev/null)
 	if [[ (! -z "$LD_GOLD") && (! -z "$ELF_FILE") ]]; then
 		LD_GOLD=$(file "$LD_GOLD" | cut -d":" -f 2 | "$GREP" -i -c "elf")
 		if [[ ("$LD_GOLD" -ne "0") ]]; then
@@ -655,22 +657,28 @@ fi
 
 # Valgrind testing of C++03, C++11, C++14 and C++17 binaries. Valgrind tests take a long time...
 if [[ (-z "$HAVE_VALGRIND") ]]; then
-	HAVE_VALGRIND=$(which valgrind 2>&1 | "$GREP" -v "no valgrind" | "$GREP" -i -c valgrind)
+	if [[ $(command -v CC 2>/dev/null) ]]; then
+		HAVE_VALGRIND=1
+	fi
 fi
 
 # Try to find a symbolizer for Asan
 if [[ (-z "$HAVE_SYMBOLIZE") && (! -z "$ASAN_SYMBOLIZER_PATH") ]]; then
 	# Sets default value
-	HAVE_SYMBOLIZE=$(which asan_symbolize 2>&1 | "$GREP" -v "no asan_symbolize" | "$GREP" -i -c "asan_symbolize")
+	if [[ $(command -v asan_symbolize 2>/dev/null) ]]; then
+		HAVE_SYMBOLIZE=1
+	fi
 	if [[ (("$HAVE_SYMBOLIZE" -ne "0") && (-z "$ASAN_SYMBOLIZE")) ]]; then
 		ASAN_SYMBOLIZE=asan_symbolize
 	fi
 
 	# Clang implicitly uses ASAN_SYMBOLIZER_PATH; set it if its not set.
 	if [[ (-z "$ASAN_SYMBOLIZER_PATH") ]]; then
-		LLVM_SYMBOLIZER_FOUND=$(which llvm-symbolizer 2>&1 | "$GREP" -v "no llvm-symbolizer" | "$GREP" -i -c llvm-symbolizer)
+		if [[ $(command -v llvm-symbolizer 2>/dev/null) ]]; then
+			LLVM_SYMBOLIZER_FOUND=1;
+		fi
 		if [[ ("$LLVM_SYMBOLIZER_FOUND" -ne "0") ]]; then
-			export ASAN_SYMBOLIZER_PATH=$(which llvm-symbolizer)
+			export ASAN_SYMBOLIZER_PATH=$(command -v llvm-symbolizer)
 		fi
 	fi
 fi
@@ -916,7 +924,7 @@ else
 	echo "Compiler:" $("$CXX" --version | head -1) | tee -a "$TEST_RESULTS"
 fi
 
-CXX_PATH=$(which "$CXX")
+CXX_PATH=$(command -v "$CXX" 2>/dev/null)
 CXX_SYMLINK=$(ls -l "$CXX_PATH" 2>/dev/null | "$GREP" -c '\->' | "$AWK" '{print $1}')
 if [[ ("$CXX_SYMLINK" -ne "0") ]]; then CXX_PATH="$CXX_PATH (symlinked)"; fi
 echo "Pathname: $CXX_PATH" | tee -a "$TEST_RESULTS"
@@ -2158,6 +2166,63 @@ if true; then
 fi
 
 ############################################
+# Debug build, NO_CPU_FEATURE_PROBES
+if true; then
+
+	############################################
+	# Debug build
+	echo
+	echo "************************************" | tee -a "$TEST_RESULTS"
+	echo "Testing: Debug, NO_CPU_FEATURE_PROBES" | tee -a "$TEST_RESULTS"
+	echo
+
+	"$MAKE" clean > /dev/null 2>&1
+	rm -f adhoc.cpp > /dev/null 2>&1
+
+	CXXFLAGS="$DEBUG_CXXFLAGS -DCRYPTOPP_NO_CPU_FEATURE_PROBES=1"
+	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
+
+	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
+	else
+		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
+		fi
+		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+
+	############################################
+	# Release build
+	echo
+	echo "************************************" | tee -a "$TEST_RESULTS"
+	echo "Testing: Release, NO_CPU_FEATURE_PROBES" | tee -a "$TEST_RESULTS"
+	echo
+
+	"$MAKE" clean > /dev/null 2>&1
+	rm -f adhoc.cpp > /dev/null 2>&1
+
+	CXXFLAGS="$RELEASE_CXXFLAGS -DCRYPTOPP_NO_CPU_FEATURE_PROBES=1"
+	CXX="$CXX" CXXFLAGS="$CXXFLAGS" "$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
+
+	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
+	else
+		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
+		fi
+		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
+		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
+			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
+		fi
+	fi
+fi
+
+############################################
 # c++03 debug and release build
 if [[ "$HAVE_CXX03" -ne "0" ]]; then
 
@@ -3071,7 +3136,7 @@ fi
 
 ############################################
 # Dead code stripping
-if [[ ("$SUN_COMPILER" -eq "0") ]]; then
+if [[ ("$GNU_LINKER" -eq "1") ]]; then
 
 	############################################
 	# Debug build
@@ -4714,73 +4779,6 @@ if [[ ("$IS_DARWIN" -ne "0" && "$HAVE_CXX17" -ne "0") ]]; then
 fi
 
 ############################################
-# CMake builds
-CMAKE=$(which cmake 2>&1 | "$GREP" -v "no cmake" | head -1)
-if [[ (! -z "$CMAKE") ]]; then
-	############################################
-	# Debug build
-	echo
-	echo "************************************" | tee -a "$TEST_RESULTS"
-	echo "Testing: Debug, CMake build" | tee -a "$TEST_RESULTS"
-	echo
-
-	"$MAKE" clean > /dev/null 2>&1
-	rm -f adhoc.cpp > /dev/null 2>&1
-
-	mkdir cryptopp-cmake
-	cd cryptopp-cmake
-
-	"$CMAKE" -DCMAKE_BUILD_TYPE=Debug ../
-	"$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
-
-	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
-	else
-		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
-		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
-		fi
-		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
-		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
-		fi
-	fi
-
-	cd ../
-	rm -rf cryptopp-cmake &> /dev/null
-
-	############################################
-	# Release build
-	echo
-	echo "************************************" | tee -a "$TEST_RESULTS"
-	echo "Testing: Release, CMake build" | tee -a "$TEST_RESULTS"
-	echo
-
-	mkdir cryptopp-cmake
-	cd cryptopp-cmake
-
-	"$CMAKE" -DCMAKE_BUILD_TYPE=Release ../
-	"$MAKE" "${MAKEARGS[@]}" static dynamic cryptest.exe 2>&1 | tee -a "$TEST_RESULTS"
-
-	if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-		echo "ERROR: failed to make cryptest.exe" | tee -a "$TEST_RESULTS"
-	else
-		./cryptest.exe v 2>&1 | tee -a "$TEST_RESULTS"
-		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-			echo "ERROR: failed to execute validation suite" | tee -a "$TEST_RESULTS"
-		fi
-		./cryptest.exe tv all 2>&1 | tee -a "$TEST_RESULTS"
-		if [[ ("${PIPESTATUS[0]}" -ne "0") ]]; then
-			echo "ERROR: failed to execute test vectors" | tee -a "$TEST_RESULTS"
-		fi
-		echo
-	fi
-
-	cd ../
-	rm -rf cryptopp-cmake &> /dev/null
-fi
-
-############################################
 # Benchmarks
 if [[ "$WANT_BENCHMARKS" -ne "0" ]]; then
 
@@ -5164,7 +5162,7 @@ fi
 #   This check was added after testing on Ubuntu 14.04 with Clang 3.4.
 if [[ ("$CLANG_COMPILER" -eq "0") ]]; then
 
-	CLANG_CXX=$(which clang++ 2>&1 | "$GREP" -v "no clang++" | head -1)
+	CLANG_CXX=$(command -v clang++ 2>/dev/null)
 	"$CLANG_CXX" -x c++ -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 
@@ -5199,7 +5197,7 @@ fi
 # Perform a quick check with GCC, if available.
 if [[ ("$GCC_COMPILER" -eq "0") ]]; then
 
-	GCC_CXX=$(which g++ 2>&1 | "$GREP" -v "no g++" | head -1)
+	GCC_CXX=$(command -v g++ 2>/dev/null)
 	"$GCC_CXX" -x c++ -DCRYPTOPP_ADHOC_MAIN adhoc.cpp.proto -o "$TMPDIR/adhoc.exe" > /dev/null 2>&1
 	if [[ "$?" -eq "0" ]]; then
 
@@ -5234,7 +5232,7 @@ fi
 # Perform a quick check with Intel ICPC, if available.
 if [[ ("$INTEL_COMPILER" -eq "0") ]]; then
 
-	INTEL_CXX=$(which icpc 2>&1 | "$GREP" -v "no icpc" | head -1)
+	ICPC_CXX=$(command -v icpc++ 2>/dev/null)
 	if [[ (-z "$INTEL_CXX") ]]; then
 		INTEL_CXX=$(find /opt/intel -name icpc 2>/dev/null | "$GREP" -iv composer | head -1)
 	fi
@@ -5760,7 +5758,7 @@ echo
 ############################################
 # http://tldp.org/LDP/abs/html/exitcodes.html#EXITCODESREF
 if (( "$ECOUNT" == "0" )); then
-	[[ "$0" = "$BASH_SOURCE" ]] && exit 0 || return 0
+	[[ "$0" = "${BASH_SOURCE[0]}" ]] && exit 0 || return 0
 else
-	[[ "$0" = "$BASH_SOURCE" ]] && exit 1 || return 1
+	[[ "$0" = "${BASH_SOURCE[0]}" ]] && exit 1 || return 1
 fi

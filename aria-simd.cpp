@@ -10,12 +10,16 @@
 #include "config.h"
 #include "misc.h"
 
+#if !(defined(__ARM_NEON) || defined(_MSC_VER))
+# undef CRYPTOPP_ARM_NEON_AVAILABLE
+#endif
+
 #if (CRYPTOPP_ARM_NEON_AVAILABLE)
-# include "arm_neon.h"
+# include <arm_neon.h>
 #endif
 
 #if (CRYPTOPP_SSSE3_AVAILABLE)
-# include "tmmintrin.h"
+# include <tmmintrin.h>
 #endif
 
 NAMESPACE_BEGIN(CryptoPP)

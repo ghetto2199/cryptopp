@@ -298,7 +298,7 @@ public:
 	DecodingResult Decrypt(RandomNumberGenerator &rng, const byte *ciphertext, size_t ciphertextLength, byte *plaintext, const NameValuePairs &parameters = g_nullNameValuePairs) const;
 };
 
-//! \class TF_DecryptorBase
+//! \class TF_EncryptorBase
 //! \brief Trapdoor function cryptosystems encryption base class
 class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE TF_EncryptorBase : public TF_CryptoSystemBase<PK_Encryptor, TF_Base<RandomizedTrapdoorFunction, PK_EncryptionMessageEncodingMethod> >
 {
@@ -480,7 +480,10 @@ public:
 	HashTransformation & AccessHash() {return this->m_object;}
 };
 
-//! _
+//! \class TF_SignatureSchemeBase
+//! \brief Trapdoor Function (TF) Signature Scheme base class
+//! \tparam INTFACE interface
+//! \tparam BASE base class
 template <class INTFACE, class BASE>
 class CRYPTOPP_NO_VTABLE TF_SignatureSchemeBase : public INTFACE, protected BASE
 {
@@ -509,7 +512,8 @@ protected:
 	virtual size_t GetDigestSize() const =0;
 };
 
-//! _
+//! \class TF_SignerBase
+//! \brief Trapdoor Function (TF) Signer base class
 class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE TF_SignerBase : public TF_SignatureSchemeBase<PK_Signer, TF_Base<RandomizedTrapdoorFunctionInverse, PK_SignatureMessageEncodingMethod> >
 {
 public:
@@ -519,7 +523,8 @@ public:
 	size_t SignAndRestart(RandomNumberGenerator &rng, PK_MessageAccumulator &messageAccumulator, byte *signature, bool restart=true) const;
 };
 
-//! _
+//! \class TF_VerifierBase
+//! \brief Trapdoor Function (TF) Verifier base class
 class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE TF_VerifierBase : public TF_SignatureSchemeBase<PK_Verifier, TF_Base<TrapdoorFunction, PK_SignatureMessageEncodingMethod> >
 {
 public:
@@ -532,7 +537,11 @@ public:
 
 // ********************************************************
 
-//! _
+//! \class TF_CryptoSchemeOptions
+//! \brief Trapdoor Function (TF) scheme options
+//! \tparam T1 algorithm info class
+//! \tparam T2 keys class with public and private key
+//! \tparam T3 message encoding class
 template <class T1, class T2, class T3>
 struct TF_CryptoSchemeOptions
 {
@@ -543,14 +552,23 @@ struct TF_CryptoSchemeOptions
 	typedef T3 MessageEncodingMethod;
 };
 
-//! _
+//! \class TF_SignatureSchemeOptions
+//! \brief Trapdoor Function (TF) signature scheme options
+//! \tparam T1 algorithm info class
+//! \tparam T2 keys class with public and private key
+//! \tparam T3 message encoding class
+//! \tparam T4 HashTransformation class
 template <class T1, class T2, class T3, class T4>
 struct TF_SignatureSchemeOptions : public TF_CryptoSchemeOptions<T1, T2, T3>
 {
 	typedef T4 HashFunction;
 };
 
-//! _
+//! \class TF_ObjectImplBase
+//! \brief Trapdoor Function (TF) base implementation
+//! \tparam BASE base class
+//! \tparam SCHEME_OPTIONS scheme options class
+//! \tparam KEY_CLASS key class
 template <class BASE, class SCHEME_OPTIONS, class KEY_CLASS>
 class CRYPTOPP_NO_VTABLE TF_ObjectImplBase : public AlgorithmImpl<BASE, typename SCHEME_OPTIONS::AlgorithmInfo>
 {
@@ -602,7 +620,12 @@ protected:
 	}
 };
 
-//! _
+//! \class TF_ObjectImplExtRef
+//! \brief Trapdoor Function (TF) signature with external reference
+//! \tparam BASE base class
+//! \tparam SCHEME_OPTIONS scheme options class
+//! \tparam KEY_CLASS key class
+//! \details TF_ObjectImplExtRef() holds a pointer to an external key structure
 template <class BASE, class SCHEME_OPTIONS, class KEY>
 class TF_ObjectImplExtRef : public TF_ObjectImplBase<BASE, SCHEME_OPTIONS, KEY>
 {
@@ -619,7 +642,12 @@ private:
 	const KEY * m_pKey;
 };
 
-//! _
+//! \class TF_ObjectImpl
+//! \brief Trapdoor Function (TF) signature scheme options
+//! \tparam BASE base class
+//! \tparam SCHEME_OPTIONS scheme options class
+//! \tparam KEY_CLASS key class
+//! \details TF_ObjectImpl() holds a reference to a trapdoor function
 template <class BASE, class SCHEME_OPTIONS, class KEY_CLASS>
 class CRYPTOPP_NO_VTABLE TF_ObjectImpl : public TF_ObjectImplBase<BASE, SCHEME_OPTIONS, KEY_CLASS>
 {
@@ -635,25 +663,33 @@ private:
 	KeyClass m_trapdoorFunction;
 };
 
-//! _
+//! \class TF_DecryptorImpl
+//! \brief Trapdoor Function (TF) decryptor options
+//! \tparam SCHEME_OPTIONS scheme options class
 template <class SCHEME_OPTIONS>
 class TF_DecryptorImpl : public TF_ObjectImpl<TF_DecryptorBase, SCHEME_OPTIONS, typename SCHEME_OPTIONS::PrivateKey>
 {
 };
 
-//! _
+//! \class TF_EncryptorImpl
+//! \brief Trapdoor Function (TF) encryptor options
+//! \tparam SCHEME_OPTIONS scheme options class
 template <class SCHEME_OPTIONS>
 class TF_EncryptorImpl : public TF_ObjectImpl<TF_EncryptorBase, SCHEME_OPTIONS, typename SCHEME_OPTIONS::PublicKey>
 {
 };
 
-//! _
+//! \class TF_SignerImpl
+//! \brief Trapdoor Function (TF) encryptor options
+//! \tparam SCHEME_OPTIONS scheme options class
 template <class SCHEME_OPTIONS>
 class TF_SignerImpl : public TF_ObjectImpl<TF_SignerBase, SCHEME_OPTIONS, typename SCHEME_OPTIONS::PrivateKey>
 {
 };
 
-//! _
+//! \class TF_VerifierImpl
+//! \brief Trapdoor Function (TF) encryptor options
+//! \tparam SCHEME_OPTIONS scheme options class
 template <class SCHEME_OPTIONS>
 class TF_VerifierImpl : public TF_ObjectImpl<TF_VerifierBase, SCHEME_OPTIONS, typename SCHEME_OPTIONS::PublicKey>
 {
@@ -996,7 +1032,7 @@ class CRYPTOPP_NO_VTABLE DL_PublicKey : public DL_Key<T>
 public:
 	typedef T Element;
 
-	virtual ~DL_PublicKey() {}
+	virtual ~DL_PublicKey();
 
 	bool GetVoidValue(const char *name, const std::type_info &valueType, void *pValue) const
 	{
@@ -1024,6 +1060,10 @@ public:
 	virtual DL_FixedBasePrecomputation<T> & AccessPublicPrecomputation() =0;
 };
 
+// Out-of-line dtor due to AIX and GCC, http://github.com/weidai11/cryptopp/issues/499
+template<class T>
+DL_PublicKey<T>::~DL_PublicKey() {}
+
 //! \brief Interface for Discrete Log (DL) private keys
 template <class T>
 class CRYPTOPP_NO_VTABLE DL_PrivateKey : public DL_Key<T>
@@ -1033,7 +1073,7 @@ class CRYPTOPP_NO_VTABLE DL_PrivateKey : public DL_Key<T>
 public:
 	typedef T Element;
 
-	virtual ~DL_PrivateKey() {}
+	virtual ~DL_PrivateKey();
 
 	void MakePublicKey(DL_PublicKey<T> &pub) const
 	{
@@ -1058,6 +1098,10 @@ public:
 	virtual void SetPrivateExponent(const Integer &x) =0;
 };
 
+// Out-of-line dtor due to AIX and GCC, http://github.com/weidai11/cryptopp/issues/499
+template<class T>
+DL_PrivateKey<T>::~DL_PrivateKey() {}
+
 template <class T>
 void DL_PublicKey<T>::AssignFrom(const NameValuePairs &source)
 {
@@ -1074,7 +1118,7 @@ void DL_PublicKey<T>::AssignFrom(const NameValuePairs &source)
 
 class OID;
 
-//! _
+//! \brief Discrete Log (DL) key base implementation
 template <class PK, class GP, class O = OID>
 class DL_KeyImpl : public PK
 {
@@ -1099,7 +1143,7 @@ private:
 class X509PublicKey;
 class PKCS8PrivateKey;
 
-//! _
+//! \brief Discrete Log (DL) private key base implementation
 template <class GP>
 class DL_PrivateKeyImpl : public DL_PrivateKey<typename GP::Element>, public DL_KeyImpl<PKCS8PrivateKey, GP>
 {
@@ -1189,14 +1233,14 @@ public:
 	}
 };
 
-//! _
+//! \brief Discrete Log (DL) public key base implementation
 template <class GP>
 class DL_PublicKeyImpl : public DL_PublicKey<typename GP::Element>, public DL_KeyImpl<X509PublicKey, GP>
 {
 public:
 	typedef typename GP::Element Element;
 
-	virtual ~DL_PublicKeyImpl() {}
+	virtual ~DL_PublicKeyImpl();
 
 	// CryptoMaterial
 	bool Validate(RandomNumberGenerator &rng, unsigned int level) const
@@ -1251,6 +1295,10 @@ public:
 private:
 	typename GP::BasePrecomputation m_ypc;
 };
+
+// Out-of-line dtor due to AIX and GCC, http://github.com/weidai11/cryptopp/issues/499
+template<class GP>
+DL_PublicKeyImpl<GP>::~DL_PublicKeyImpl() {}
 
 //! \brief Interface for Elgamal-like signature algorithms
 template <class T>
