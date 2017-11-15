@@ -46,6 +46,7 @@ IS_SUN := $(shell uname -s | $(GREP) -i -c "SunOS")
 
 IS_LINUX := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Linux")
 IS_MINGW := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "MinGW")
+IS_MINGW32 := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -x -c "mingw32")
 IS_CYGWIN := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Cygwin")
 IS_DARWIN := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Darwin")
 IS_NETBSD := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "NetBSD")
@@ -152,6 +153,20 @@ endif
 
 # Clang integrated assembler will be used with -Wa,-q
 CLANG_INTEGRATED_ASSEMBLER ?= 0
+
+# original MinGW targets Win2k by default, but lacks proper Win2k support
+# if target Windows version is not specified, use Windows XP instead
+ifeq ($(IS_MINGW32),1)
+ifeq ($(findstring -D_WIN32_WINNT,$(CXXFLAGS)),)
+ifeq ($(findstring -D_WIN32_WINDOWS,$(CXXFLAGS)),)
+ifeq ($(findstring -DWINVER,$(CXXFLAGS)),)
+ifeq ($(findstring -DNTDDI_VERSION,$(CXXFLAGS)),)
+  CXXFLAGS += -D_WIN32_WINNT=0x0501
+endif # NTDDI_VERSION
+endif # WINVER
+endif # _WIN32_WINDOWS
+endif # _WIN32_WINNT
+endif # IS_MINGW32
 
 ###########################################################
 #####               X86/X32/X64 Options               #####
@@ -404,17 +419,6 @@ ifeq ($(XLC_COMPILER),1)
     CXXFLAGS += -q32
   endif
   endif
-  ifeq ($(findstring -q64,$(CXXFLAGS)),-q64)
-    ifeq ($(findstring -X64,$(ARFLAGS)),)
-      ARFLAGS := -r -X64
-    endif
-  else
-  ifeq ($(findstring -q32,$(CXXFLAGS)),-q32)
-    ifeq ($(findstring -X32,$(ARFLAGS)),)
-      ARFLAGS := -r -X32
-    endif
-  endif
-  endif
 endif
 
 endif  # X86, X64, ARM32, ARM64, PPC32, PPC64, etc
@@ -443,7 +447,7 @@ endif
 ifeq ($(IS_SUN)$(SUN_COMPILER),11)
   ifneq ($(IS_X86)$(IS_X32)$(IS_X64),000)
     ifeq ($(findstring -DCRYPTOPP_DISABLE_ASM,$(CXXFLAGS)),)
-      LDFLAGS += -M cryptest.mapfile
+      LDFLAGS += -M cryptopp.mapfile
     endif  # No CRYPTOPP_DISABLE_ASM
   endif  # X86/X32/X64
 endif  # SunOS
@@ -781,7 +785,7 @@ clean:
 	@-$(RM) libcryptopp.a libcryptopp.dylib cryptopp.dll libcryptopp.dll.a libcryptopp.import.a
 	@-$(RM) libcryptopp.so libcryptopp.so$(SOLIB_COMPAT_SUFFIX) libcryptopp.so$(SOLIB_VERSION_SUFFIX)
 	@-$(RM) cryptest.exe dlltest.exe cryptest.import.exe cryptest.info ct et
-	@-$(RM) *.gcov *.gcno *.gcda *.stackdump core core-*
+	@-$(RM) *.la *.lo *.gcov *.gcno *.gcda *.stackdump core core-*
 	@-$(RM) /tmp/adhoc.exe
 	@-$(RM) -r /tmp/cryptopp_test/
 	@-$(RM) -r *.exe.dSYM/
@@ -794,9 +798,10 @@ distclean: clean
 	@-$(RM) cryptopp.tgz *.o *.bc *.ii *~
 	@-$(RM) -r $(SRCS:.cpp=.obj) cryptlib.lib cryptest.exe *.suo *.sdf *.pdb Win32/ x64/ ipch/
 	@-$(RM) -r $(DOCUMENT_DIRECTORY)/
-	@-$(RM) -f configure.ac configure Makefile.am Makefile *.m4 local.* lt*.sh missing libtool
-	@-$(RM) -f config.guess config.status config.sub depcomp install-sh compile stamp-h1
-	@-$(RM) -rf m4/ auto*.cache/ .deps/
+	@-$(RM) -f configure.ac configure configure.in Makefile.am Makefile.in Makefile
+	@-$(RM) -f config.guess config.status config.sub depcomp install-sh compile
+	@-$(RM) -f stamp-h1 ar-lib *.m4 local.* lt*.sh missing libtool* libcryptopp.pc*
+	@-$(RM) -rf m4/ auto*.cache/ .deps/ .libs/
 	@-$(RM) -r TestCoverage/
 	@-$(RM) cryptopp$(LIB_VER)\.*
 	@-$(RM) CryptoPPRef.zip
@@ -902,7 +907,7 @@ dlltest.exe: cryptopp.dll $(DLLTESTOBJS)
 	$(CXX) -o $@ $(strip $(CXXFLAGS)) $(DLLTESTOBJS) -L. -lcryptopp.dll $(LDFLAGS) $(LDLIBS)
 
 # This recipe prepares the distro files
-TEXT_FILES := *.h *.cpp adhoc.cpp.proto License.txt Readme.txt Install.txt Filelist.txt Doxyfile cryptest* cryptlib* dlltest* cryptdll* *.sln *.vcxproj *.filters cryptopp.rc TestVectors/*.txt TestData/*.dat TestScripts/*.sh TestScripts/*.pl TestScripts/*.cmd
+TEXT_FILES := *.h *.cpp adhoc.cpp.proto License.txt Readme.txt Install.txt Filelist.txt Doxyfile cryptest* cryptlib* dlltest* cryptdll* *.sln *.vcxproj *.filters cryptopp.rc TestVectors/*.txt TestData/*.dat TestScripts/*.sh TestScripts/*.cmd
 EXEC_FILES := GNUmakefile GNUmakefile-cross TestData/ TestVectors/ TestScripts/
 
 ifeq ($(wildcard Filelist.txt),Filelist.txt)
@@ -925,8 +930,8 @@ endif
 convert:
 	@-$(CHMOD) 0700 TestVectors/ TestData/ TestScripts/
 	@-$(CHMOD) 0600 $(TEXT_FILES) .*.yml *.asm *.s *.zip TestVectors/*.txt TestData/*.dat TestScripts/*.*
-	@-$(CHMOD) 0700 $(EXEC_FILES) *.sh *.cmd TestScripts/*.sh TestScripts/*.pl TestScripts/*.cmd
-	@-$(CHMOD) 0700 *.cmd *.sh GNUmakefile GNUmakefile-cross TestScripts/*.sh TestScripts/*.pl
+	@-$(CHMOD) 0700 $(EXEC_FILES) *.sh *.cmd TestScripts/*.sh TestScripts/*.cmd
+	@-$(CHMOD) 0700 *.cmd *.sh GNUmakefile GNUmakefile-cross TestScripts/*.sh
 	-unix2dos --keepdate --quiet $(TEXT_FILES) .*.yml *.asm *.cmd TestScripts/*.*
 	-dos2unix --keepdate --quiet GNUmakefile GNUmakefile-cross *.s *.sh *.mapfile TestScripts/*.sh
 ifneq ($(IS_DARWIN),0)
@@ -980,7 +985,7 @@ rdrand-%.o:
 	./rdrand-nasm.sh
 endif
 
-# SSE4.2 or NEON available
+# SSSE3 or NEON available
 aria-simd.o : aria-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(ARIA_FLAG) -c) $<
 

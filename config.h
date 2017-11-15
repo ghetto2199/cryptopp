@@ -9,23 +9,23 @@
 // ***************** Important Settings ********************
 
 // define this if running on a big-endian CPU
-#if !defined(IS_LITTLE_ENDIAN) && !defined(IS_BIG_ENDIAN) && (defined(__BIG_ENDIAN__) || (defined(__s390__) || defined(__s390x__) || defined(__zarch__)) || (defined(__m68k__) || defined(__MC68K__)) || defined(__sparc) || defined(__sparc__) || defined(__hppa__) || defined(__MIPSEB__) || defined(__ARMEB__) || (defined(__MWERKS__) && !defined(__INTEL__)))
-#	define IS_BIG_ENDIAN 1
+#if !defined(CRYPTOPP_LITTLE_ENDIAN) && !defined(CRYPTOPP_BIG_ENDIAN) && (defined(__BIG_ENDIAN__) || (defined(__s390__) || defined(__s390x__) || defined(__zarch__)) || (defined(__m68k__) || defined(__MC68K__)) || defined(__sparc) || defined(__sparc__) || defined(__hppa__) || defined(__MIPSEB__) || defined(__ARMEB__) || (defined(__MWERKS__) && !defined(__INTEL__)))
+#	define CRYPTOPP_BIG_ENDIAN 1
 #endif
 
 // define this if running on a little-endian CPU
-// big endian will be assumed if IS_LITTLE_ENDIAN is not defined
-#if !defined(IS_BIG_ENDIAN) && !defined(IS_LITTLE_ENDIAN)
-#	define IS_LITTLE_ENDIAN 1
+// big endian will be assumed if CRYPTOPP_LITTLE_ENDIAN is not defined
+#if !defined(CRYPTOPP_BIG_ENDIAN) && !defined(CRYPTOPP_LITTLE_ENDIAN)
+#	define CRYPTOPP_LITTLE_ENDIAN 1
 #endif
 
 // Sanity checks. Some processors have more than big, little and bi-endian modes. PDP mode, where order results in "4312", should
 // raise red flags immediately. Additionally, mis-classified machines, like (previosuly) S/390, should raise red flags immediately.
-#if defined(IS_BIG_ENDIAN) && defined(__GNUC__) && defined(__BYTE_ORDER__) && (__BYTE_ORDER__ != __ORDER_BIG_ENDIAN__)
-# error "IS_BIG_ENDIAN is set, but __BYTE_ORDER__ is not __ORDER_BIG_ENDIAN__"
+#if defined(CRYPTOPP_BIG_ENDIAN) && defined(__GNUC__) && defined(__BYTE_ORDER__) && (__BYTE_ORDER__ != __ORDER_BIG_ENDIAN__)
+# error "CRYPTOPP_BIG_ENDIAN is set, but __BYTE_ORDER__ is not __ORDER_BIG_ENDIAN__"
 #endif
-#if defined(IS_LITTLE_ENDIAN) && defined(__GNUC__) && defined(__BYTE_ORDER__) && (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
-# error "IS_LITTLE_ENDIAN is set, but __BYTE_ORDER__ is not __ORDER_LITTLE_ENDIAN__"
+#if defined(CRYPTOPP_LITTLE_ENDIAN) && defined(__GNUC__) && defined(__BYTE_ORDER__) && (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
+# error "CRYPTOPP_LITTLE_ENDIAN is set, but __BYTE_ORDER__ is not __ORDER_LITTLE_ENDIAN__"
 #endif
 
 // Define this if you want to disable all OS-dependent features,
@@ -54,9 +54,19 @@
 # endif
 #endif
 
+// Define CRYPTOPP_NO_CXX11 to avoid C++11 related features shown at the
+// end of this file. Some compilers and standard C++ headers advertise C++11
+// but they are really just C++03 with some additional C++11 headers and
+// non-conforming classes. You might also consider `-std=c++03` or
+// `-std=gnu++03`, but they are required options when building the library
+// and all programs. CRYPTOPP_NO_CXX11 is probably easier to manage but it may
+// cause -Wterminate warnings under GCC. MSVC++ has a similar warning.
+// Also see https://github.com/weidai11/cryptopp/issues/529
+// #define CRYPTOPP_NO_CXX11 1
+
 // Define this to allow unaligned data access. If you experience a break with
 // GCC at -O3, you should immediately suspect unaligned data accesses.
-// #define CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS
+// #define CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS 1
 
 // ***************** Less Important Settings ***************
 
@@ -364,7 +374,7 @@ NAMESPACE_END
 	// 4786: identifier was truncated in debug information
 	// 4355: 'this' : used in base member initializer list
 	// 4910: '__declspec(dllexport)' and 'extern' are incompatible on an explicit instantiation
-#	pragma warning(disable: 4127 4512 4661)
+#	pragma warning(disable: 4127 4512 4661 4910)
 	// Security related, possible defects
 	// http://blogs.msdn.com/b/vcblog/archive/2010/12/14/off-by-default-compiler-warnings-in-visual-c.aspx
 #	pragma warning(once: 4191 4242 4263 4264 4266 4302 4826 4905 4906 4928)
@@ -600,23 +610,36 @@ NAMESPACE_END
 
 #if (CRYPTOPP_BOOL_PPC32 || CRYPTOPP_BOOL_PPC64)
 
+#if defined(CRYPTOPP_DISABLE_ALTIVEC) || defined(CRYPTOPP_DISABLE_ASM)
+# undef CRYPTOPP_DISABLE_ALTIVEC
+# undef CRYPTOPP_DISABLE_POWER7
+# undef CRYPTOPP_DISABLE_POWER8
+# define CRYPTOPP_DISABLE_ALTIVEC 1
+# define CRYPTOPP_DISABLE_POWER7 1
+# define CRYPTOPP_DISABLE_POWER8 1
+#endif
+
 // An old Apple G5 with GCC 4.01 has AltiVec, but its only Power4 or so.
 // We need Power7 or above, so the makefile defines CRYPTOPP_DISABLE_ALTIVEC.
-#if !defined(CRYPTOPP_POWER7_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ALTIVEC) && !defined(CRYPTOPP_DISABLE_ASM)
-# if defined(_ARCH_PWR7) || (CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40000)
+#if !defined(CRYPTOPP_ALTIVEC_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ALTIVEC)
+# if defined(_ARCH_PWR4) || (CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40100)
 #  define CRYPTOPP_ALTIVEC_AVAILABLE 1
+# endif
+#endif
+
+#if !defined(CRYPTOPP_POWER7_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER7) && defined(CRYPTOPP_ALTIVEC_AVAILABLE)
+# if defined(_ARCH_PWR7) || (CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40100)
 #  define CRYPTOPP_POWER7_AVAILABLE 1
 # endif
 #endif
 
-#if !defined(CRYPTOPP_POWER8_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ALTIVEC) && !defined(CRYPTOPP_DISABLE_ASM)
+#if !defined(CRYPTOPP_POWER8_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER8) && defined(CRYPTOPP_POWER7_AVAILABLE)
 # if defined(_ARCH_PWR8) || (CRYPTOPP_XLC_VERSION >= 130000) || (CRYPTOPP_GCC_VERSION >= 40800)
-#  define CRYPTOPP_ALTIVEC_AVAILABLE 1
 #  define CRYPTOPP_POWER8_AVAILABLE 1
 # endif
 #endif
 
-#if !defined(CRYPTOPP_POWER8_CRYPTO_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ALTIVEC) && !defined(CRYPTOPP_DISABLE_ASM)
+#if !defined(CRYPTOPP_POWER8_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER8) && defined(CRYPTOPP_POWER7_AVAILABLE)
 # if defined(__CRYPTO__) || defined(_ARCH_PWR8) || (CRYPTOPP_XLC_VERSION >= 130000) || (CRYPTOPP_GCC_VERSION >= 40800)
 #  define CRYPTOPP_POWER8_AES_AVAILABLE 1
 //#  define CRYPTOPP_POWER8_SHA_AVAILABLE 1
@@ -895,8 +918,11 @@ NAMESPACE_END
 // Intel and C++11 language features, http://software.intel.com/en-us/articles/c0x-features-supported-by-intel-c-compiler
 // GCC and C++11 language features, http://gcc.gnu.org/projects/cxx0x.html
 // Clang and C++11 language features, http://clang.llvm.org/cxx_status.html
-#if ((_MSC_VER >= 1600) || (__cplusplus >= 201103L)) && !defined(_STLPORT_VERSION)
-# define CRYPTOPP_CXX11 1
+
+#if !defined(CRYPTOPP_NO_CXX11)
+#  if ((_MSC_VER >= 1600) || (__cplusplus >= 201103L)) && !defined(_STLPORT_VERSION)
+#    define CRYPTOPP_CXX11 1
+#  endif
 #endif
 
 // Hack ahead. Apple's standard library does not have C++'s unique_ptr in C++11. We can't
@@ -929,7 +955,15 @@ NAMESPACE_END
 #if (CRYPTOPP_MSC_VERSION >= 1700) || (CRYPTOPP_LLVM_CLANG_VERSION >= 30300) || \
 	(CRYPTOPP_APPLE_CLANG_VERSION >= 50000) || (__INTEL_COMPILER >= 1200) || \
 	(CRYPTOPP_GCC_VERSION >= 40400) || (__SUNPRO_CC >= 0x5130)
-# define CRYPTOPP_CXX11_SYNCHRONIZATION 1
+// Hack ahead. New GCC compilers like GCC 6 on AIX 7.0 or earlier as well as original MinGW
+// don't have the synchronization gear. However, Wakely's test used for Apple does not work
+// on the GCC/AIX combination. Another twist is we need other stuff from C++11,
+// like no-except destructors. Dumping preprocessors shows the following may
+// apply: http://stackoverflow.com/q/14191566/608639.
+# include <cstddef>
+# if !defined(__GLIBCXX__) || defined(_GLIBCXX_HAS_GTHREADS)
+#  define CRYPTOPP_CXX11_SYNCHRONIZATION 1
+# endif
 #endif // synchronization
 
 // Dynamic Initialization and Destruction with Concurrency ("Magic Statics")
@@ -989,17 +1023,6 @@ NAMESPACE_END
 // TODO: Emplacement, R-values and Move semantics
 
 #endif // CRYPTOPP_CXX11
-
-// Hack ahead. New GCC compilers like GCC 6 on AIX 7.0 or earlier don't have the
-//   synchronization gear. However, Wakely's test used for Apple does not work
-//   on the GCC/AIX combination. Another twist is we need other stuff from C++11,
-//   like no-except destructors. Dumping preprocessors shows the following may
-//   apply: http://stackoverflow.com/q/14191566/608639.
-#if defined(_AIX) && defined(__GNUC__)
-#  if !defined(_GLIBCXX_HAS_GTHREADS)
-#    undef CRYPTOPP_CXX11_SYNCHRONIZATION
-#  endif
-#endif
 
 #if defined(CRYPTOPP_CXX11_NOEXCEPT)
 #  define CRYPTOPP_THROW noexcept(false)

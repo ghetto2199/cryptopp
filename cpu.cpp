@@ -48,6 +48,11 @@ unsigned long int getauxval(unsigned long int) { return 0; }
 # include <setjmp.h>
 #endif
 
+// Needed by SunCC and MSVC
+#if (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64)
+# include <emmintrin.h>
+#endif
+
 NAMESPACE_BEGIN(CryptoPP)
 
 #ifndef CRYPTOPP_MS_STYLE_INLINE_ASSEMBLY
@@ -113,7 +118,6 @@ bool CpuId(word32 func, word32 subfunc, word32 output[4])
 			mov eax, func
 			mov ecx, subfunc
 			cpuid
-			mov edi, output
 			mov [a], eax
 			mov [b], ebx
 			mov [c], ecx
@@ -130,7 +134,9 @@ bool CpuId(word32 func, word32 subfunc, word32 output[4])
 		return false;
 	}
 
-	// function 0 returns the highest basic function understood in EAX
+	// func = 0 returns the highest basic function understood in EAX. If the CPU does
+	// not return non-0, then it is mostly useless. The code below converts basic
+	// function value to a true/false return value.
 	if(func == 0)
 		return !!output[0];
 
@@ -748,9 +754,11 @@ NAMESPACE_END
 // *************************** C++ Static Initialization ***************************
 
 ANONYMOUS_NAMESPACE_BEGIN
-struct InitializeCpu
+
+class InitCpu
 {
-	InitializeCpu()
+public:
+	InitCpu()
 	{
 #if CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64
 		CryptoPP::DetectX86Features();
@@ -762,16 +770,21 @@ struct InitializeCpu
 	}
 };
 
+// This is not really needed because HasSSE() and friends can dynamically initialize.
+// Everything depends on CPU features so we initialize it once at load time.
+// Dynamic initialization will be used if init priorities are not available.
+
 #if HAVE_GCC_INIT_PRIORITY
-const InitializeCpu s_init __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 20))) = InitializeCpu();
+	const InitCpu s_init __attribute__ ((init_priority (CRYPTOPP_INIT_PRIORITY + 10))) = InitCpu();
 #elif HAVE_MSC_INIT_PRIORITY
-#pragma warning(disable: 4075)
-#pragma init_seg(".CRT$XCU-020")
-const InitializeCpu s_init;
-#pragma warning(default: 4075)
+	#pragma warning(disable: 4075)
+	#pragma init_seg(".CRT$XCU")
+	const InitCpu s_init;
+	#pragma warning(default: 4075)
 #else
-const InitializeCpu& s_init = CryptoPP::Singleton<InitializeCpu>().Ref();
+	const InitCpu s_init;
 #endif
+
 ANONYMOUS_NAMESPACE_END
 
 #endif  // CRYPTOPP_IMPORTS

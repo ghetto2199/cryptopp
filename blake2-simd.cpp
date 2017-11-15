@@ -11,6 +11,11 @@
 #include "misc.h"
 #include "blake2.h"
 
+// Uncomment for benchmarking C++ against SSE2 or NEON.
+// Do so in both blake2.cpp and blake2-simd.cpp.
+// #undef CRYPTOPP_SSE42_AVAILABLE
+// #undef CRYPTOPP_ARM_NEON_AVAILABLE
+
 #if !(defined(__ARM_NEON) || defined(_MSC_VER))
 # undef CRYPTOPP_ARM_NEON_AVAILABLE
 #endif
@@ -45,7 +50,7 @@ NAMESPACE_BEGIN(CryptoPP)
 inline __m128i MM_SET_EPI64X(const word64 a, const word64 b)
 {
     const word64 t[2] = {b,a}; __m128i r;
-    ::memcpy(&r, &t, sizeof(t));
+    ::memcpy(&r, t, sizeof(t));
     return r;
 }
 #else
