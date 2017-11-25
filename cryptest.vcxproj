@@ -256,8 +256,12 @@
     <None Include="TestVectors\sha2.txt" />
     <None Include="TestVectors\sha3.txt" />
     <None Include="TestVectors\shacal2.txt" />
+    <None Include="TestVectors\simon.txt" />
     <None Include="TestVectors\siphash.txt" />
+    <Text Include="TestVectors\sm3.txt" />
+    <None Include="TestVectors\sm4.txt" />
     <None Include="TestVectors\sosemanuk.txt" />
+    <None Include="TestVectors\speck.txt" />
     <None Include="TestVectors\tea.txt" />
     <None Include="TestVectors\threefish.txt" />
     <None Include="TestVectors\ttmac.txt" />

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{1e9e61cf-0e3c-4b79-955f-9f077eabdb3e}</UniqueIdentifier>
+      <Extensions>.h;.hpp</Extensions>
+    </Filter>
     <Filter Include="Source Files">
       <UniqueIdentifier>{0465ef4f-be03-463e-81e5-5a399f32620f}</UniqueIdentifier>
       <Extensions>.cpp</Extensions>
-    </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{1e9e61cf-0e3c-4b79-955f-9f077eabdb3e}</UniqueIdentifier>
-      <Extensions>.;.h</Extensions>
     </Filter>
     <Filter Include="Miscellaneous">
       <UniqueIdentifier>{5e447502-2b0f-49c8-9df5-45ea9e7fcfbd}</UniqueIdentifier>
@@ -362,7 +362,16 @@
     <ClCompile Include="simple.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="simon.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="skipjack.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sm3.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sm4.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="socketft.cpp">
@@ -371,10 +380,19 @@
     <ClCompile Include="sosemanuk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="speck.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="speck-simd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="square.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="squaretb.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sse-simd.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="strciphr.cpp">
@@ -801,10 +819,19 @@
     <ClInclude Include="simple.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="simon.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="siphash.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="skipjack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sm3.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sm4.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="smartptr.h">
@@ -814,6 +841,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="sosemanuk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="speck.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="square.h">
@@ -887,17 +917,11 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="adhoc.cpp.proto">
-      <Filter>Source Files</Filter>
-    </CustomBuild>
     <CustomBuild Include="rdrand.asm">
       <Filter>Source Files</Filter>
     </CustomBuild>
-    <CustomBuild Include="x64dll.asm">
-      <Filter>Source Files</Filter>
-    </CustomBuild>
-    <CustomBuild Include="x64masm.asm">
-      <Filter>Source Files</Filter>
+    <CustomBuild Include="adhoc.cpp.proto">
+      <Filter>Miscellaneous</Filter>
     </CustomBuild>
   </ItemGroup>
 </Project>

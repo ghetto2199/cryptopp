@@ -6,6 +6,8 @@
 #include "validate.h"
 
 #include "aes.h"
+#include "kalyna.h"
+#include "threefish.h"
 #include "blumshub.h"
 #include "files.h"
 #include "filters.h"
@@ -469,20 +471,21 @@ void Benchmark1(double t, double hertz)
 		BenchMarkByNameKeyLess<HashTransformation>("SHA-1");
 		BenchMarkByNameKeyLess<HashTransformation>("SHA-256");
 		BenchMarkByNameKeyLess<HashTransformation>("SHA-512");
-		BenchMarkByNameKeyLess<HashTransformation>("Keccak-224");
-		BenchMarkByNameKeyLess<HashTransformation>("Keccak-256");
-		BenchMarkByNameKeyLess<HashTransformation>("Keccak-384");
-		BenchMarkByNameKeyLess<HashTransformation>("Keccak-512");
 		BenchMarkByNameKeyLess<HashTransformation>("SHA3-224");
 		BenchMarkByNameKeyLess<HashTransformation>("SHA3-256");
 		BenchMarkByNameKeyLess<HashTransformation>("SHA3-384");
 		BenchMarkByNameKeyLess<HashTransformation>("SHA3-512");
+		BenchMarkByNameKeyLess<HashTransformation>("Keccak-224");
+		BenchMarkByNameKeyLess<HashTransformation>("Keccak-256");
+		BenchMarkByNameKeyLess<HashTransformation>("Keccak-384");
+		BenchMarkByNameKeyLess<HashTransformation>("Keccak-512");
 		BenchMarkByNameKeyLess<HashTransformation>("Tiger");
 		BenchMarkByNameKeyLess<HashTransformation>("Whirlpool");
 		BenchMarkByNameKeyLess<HashTransformation>("RIPEMD-160");
 		BenchMarkByNameKeyLess<HashTransformation>("RIPEMD-320");
 		BenchMarkByNameKeyLess<HashTransformation>("RIPEMD-128");
 		BenchMarkByNameKeyLess<HashTransformation>("RIPEMD-256");
+		BenchMarkByNameKeyLess<HashTransformation>("SM3");
 		BenchMarkByNameKeyLess<HashTransformation>("BLAKE2s");
 		BenchMarkByNameKeyLess<HashTransformation>("BLAKE2b");
 	}
@@ -575,9 +578,9 @@ void Benchmark2(double t, double hertz)
 		BenchMarkByName<SymmetricCipher>("Camellia/CTR", 16);
 		BenchMarkByName<SymmetricCipher>("Camellia/CTR", 32);
 		BenchMarkByName<SymmetricCipher>("Twofish/CTR");
-		BenchMarkByName<SymmetricCipher>("Threefish/CTR", 32, "Threefish/CTR (256-bit key)", MakeParameters(Name::BlockSize(), 32));
-		BenchMarkByName<SymmetricCipher>("Threefish/CTR", 64, "Threefish/CTR (512-bit key)", MakeParameters(Name::BlockSize(), 64));
-		BenchMarkByName<SymmetricCipher>("Threefish/CTR", 128, "Threefish/CTR (1024-bit key)", MakeParameters(Name::BlockSize(), 128));
+		BenchMarkByName<SymmetricCipher>("Threefish-256(256)/CTR", 32);
+		BenchMarkByName<SymmetricCipher>("Threefish-512(512)/CTR", 64);
+		BenchMarkByName<SymmetricCipher>("Threefish-1024(1024)/CTR", 128);
 		BenchMarkByName<SymmetricCipher>("Serpent/CTR");
 		BenchMarkByName<SymmetricCipher>("CAST-256/CTR");
 		BenchMarkByName<SymmetricCipher>("RC6/CTR");
@@ -595,11 +598,26 @@ void Benchmark2(double t, double hertz)
 		BenchMarkByName<SymmetricCipher>("CAST-128/CTR");
 		BenchMarkByName<SymmetricCipher>("SKIPJACK/CTR");
 		BenchMarkByName<SymmetricCipher>("SEED/CTR", 0, "SEED/CTR (1/2 K table)");
-		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 16, "Kalyna-128(128) (128-bit key)", MakeParameters(Name::BlockSize(), 16));
-		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 32, "Kalyna-128(256) (256-bit key)", MakeParameters(Name::BlockSize(), 16));
-		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 32, "Kalyna-256(256) (256-bit key)", MakeParameters(Name::BlockSize(), 32));
-		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 64, "Kalyna-256(512) (512-bit key)", MakeParameters(Name::BlockSize(), 32));
-		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 64, "Kalyna-512(512) (512-bit key)", MakeParameters(Name::BlockSize(), 64));
+
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 16, "Kalyna-128(128)/CTR (128-bit key)", MakeParameters(Name::BlockSize(), 16));
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 32, "Kalyna-128(256)/CTR (256-bit key)", MakeParameters(Name::BlockSize(), 16));
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 32, "Kalyna-256(256)/CTR (256-bit key)", MakeParameters(Name::BlockSize(), 32));
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 64, "Kalyna-256(512)/CTR (512-bit key)", MakeParameters(Name::BlockSize(), 32));
+		BenchMarkByName<SymmetricCipher>("Kalyna/CTR", 64, "Kalyna-512(512)/CTR (512-bit key)", MakeParameters(Name::BlockSize(), 64));
+
+		BenchMarkByName<SymmetricCipher>("SIMON-64/CTR", 12, "SIMON-64(96)/CTR (96-bit key)");
+		BenchMarkByName<SymmetricCipher>("SIMON-64/CTR", 16, "SIMON-64(128)/CTR (128-bit key)");
+		BenchMarkByName<SymmetricCipher>("SIMON-128/CTR", 16, "SIMON-128(128)/CTR (128-bit key)");
+		BenchMarkByName<SymmetricCipher>("SIMON-128/CTR", 24, "SIMON-128(192)/CTR (192-bit key)");
+		BenchMarkByName<SymmetricCipher>("SIMON-128/CTR", 32, "SIMON-128(256)/CTR (256-bit key)");
+
+		BenchMarkByName<SymmetricCipher>("SPECK-64/CTR", 12, "SPECK-64(96)/CTR (96-bit key)");
+		BenchMarkByName<SymmetricCipher>("SPECK-64/CTR", 16, "SPECK-64(128)/CTR (128-bit key)");
+		BenchMarkByName<SymmetricCipher>("SPECK-128/CTR", 16, "SPECK-128(128)/CTR (128-bit key)");
+		BenchMarkByName<SymmetricCipher>("SPECK-128/CTR", 24, "SPECK-128(192)/CTR (192-bit key)");
+		BenchMarkByName<SymmetricCipher>("SPECK-128/CTR", 32, "SPECK-128(256)/CTR (256-bit key)");
+
+		BenchMarkByName<SymmetricCipher>("SM4/CTR");
 	}
 
 	std::cout << "\n<TBODY style=\"background: yellow;\">";

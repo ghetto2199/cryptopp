@@ -118,6 +118,12 @@
 // of 'b', 'o', 'h' or '.' (the last for decimal).
 // #define CRYPTOPP_USE_STD_SHOWBASE
 
+// Define this if ARMv8 shifts are slow. ARM Cortex-A53 and Cortex-A57 shift
+// operation perform poorly, so NEON and ASIMD code that relies on shifts
+// or rotates often performs worse than regular C/C++ code. Also see
+// http://github.com/weidai11/cryptopp/issues/367.
+#define CRYPTOPP_SLOW_ARMV8_SHIFT 1
+
 // Define this if you want to decouple AlgorithmParameters and Integer
 // The decoupling should make it easier for the linker to remove Integer
 // related code for those who do not need Integer, and avoid a potential
@@ -247,11 +253,11 @@ const lword LWORD_MAX = W64LIT(0xffffffffffffffff);
 #endif
 
 // Apple and LLVM's Clang. Apple Clang version 7.0 roughly equals LLVM Clang version 3.7
-#if defined(__clang__ ) && defined(__apple_build_version__)
+#if defined(__clang__) && defined(__apple_build_version__)
 	#define CRYPTOPP_APPLE_CLANG_VERSION (__clang_major__ * 10000 + __clang_minor__ * 100 + __clang_patchlevel__)
 	#define CRYPTOPP_CLANG_INTEGRATED_ASSEMBLER 1
-#elif defined(__clang__ )
-	#define CRYPTOPP_LLVM_CLANG_VERSION (__clang_major__ * 10000 + __clang_minor__ * 100 + __clang_patchlevel__)
+#elif defined(__clang__)
+	#define CRYPTOPP_LLVM_CLANG_VERSION  (__clang_major__ * 10000 + __clang_minor__ * 100 + __clang_patchlevel__)
 	#define CRYPTOPP_CLANG_INTEGRATED_ASSEMBLER 1
 #endif
 
@@ -266,7 +272,9 @@ const lword LWORD_MAX = W64LIT(0xffffffffffffffff);
 
 // Clang due to "Inline assembly operands don't work with .intel_syntax", http://llvm.org/bugs/show_bug.cgi?id=24232
 //   TODO: supply the upper version when LLVM fixes it. We set it to 20.0 for compilation purposes.
-#if (defined(CRYPTOPP_LLVM_CLANG_VERSION) && CRYPTOPP_LLVM_CLANG_VERSION <= 200000) || (defined(CRYPTOPP_APPLE_CLANG_VERSION) && CRYPTOPP_APPLE_CLANG_VERSION <= 200000) || defined(CRYPTOPP_CLANG_INTEGRATED_ASSEMBLER)
+#if (defined(CRYPTOPP_LLVM_CLANG_VERSION) && (CRYPTOPP_LLVM_CLANG_VERSION <= 200000)) || \
+	(defined(CRYPTOPP_APPLE_CLANG_VERSION) && (CRYPTOPP_APPLE_CLANG_VERSION <= 200000)) || \
+	defined(CRYPTOPP_CLANG_INTEGRATED_ASSEMBLER)
 	#define CRYPTOPP_DISABLE_INTEL_ASM 1
 #endif
 
@@ -490,8 +498,9 @@ NAMESPACE_END
 #endif
 
 #if !defined(CRYPTOPP_DISABLE_ASM) && !defined(CRYPTOPP_DISABLE_SSSE3)
-# if defined(__SSSE3__) || (_MSC_VER >= 1500) || (CRYPTOPP_GCC_VERSION >= 40300) || \
-    (__SUNPRO_CC >= 0x5110)
+# if defined(__SSSE3__) || (_MSC_VER >= 1500) || \
+	(CRYPTOPP_GCC_VERSION >= 40300) || (__INTEL_COMPILER >= 1000) || (__SUNPRO_CC >= 0x5110) || \
+	(CRYPTOPP_LLVM_CLANG_VERSION >= 20300) || (CRYPTOPP_APPLE_CLANG_VERSION >= 40000)
 	#define CRYPTOPP_SSSE3_AVAILABLE 1
 # endif
 #endif
@@ -639,7 +648,7 @@ NAMESPACE_END
 # endif
 #endif
 
-#if !defined(CRYPTOPP_POWER8_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER8) && defined(CRYPTOPP_POWER7_AVAILABLE)
+#if !defined(CRYPTOPP_POWER8_AES_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER8_AES) && defined(CRYPTOPP_POWER8_AVAILABLE)
 # if defined(__CRYPTO__) || defined(_ARCH_PWR8) || (CRYPTOPP_XLC_VERSION >= 130000) || (CRYPTOPP_GCC_VERSION >= 40800)
 #  define CRYPTOPP_POWER8_AES_AVAILABLE 1
 //#  define CRYPTOPP_POWER8_SHA_AVAILABLE 1

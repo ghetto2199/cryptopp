@@ -253,7 +253,7 @@ void Rijndael::Base::FillEncTable()
 		for (int j=0; j<4; j++)
 		{
 			Te[i+j*256] = y;
-			y = rotrFixed(y, 8);
+			y = rotrConstant<8>(y);
 		}
 #endif
 	}
@@ -276,7 +276,7 @@ void Rijndael::Base::FillDecTable()
 		for (int j=0; j<4; j++)
 		{
 			Td[i+j*256] = y;
-			y = rotrFixed(y, 8);
+			y = rotrConstant<8>(y);
 		}
 #endif
 	}
@@ -1126,7 +1126,7 @@ void Rijndael_Enc_AdvancedProcessBlocks(void *locals, const word32 *k);
 }
 #endif
 
-#if CRYPTOPP_ENABLE_ADVANCED_PROCESS_BLOCKS
+#if CRYPTOPP_RIJNDAEL_ADVANCED_PROCESS_BLOCKS
 size_t Rijndael::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags) const
 {
 #if CRYPTOPP_AESNI_AVAILABLE
@@ -1212,7 +1212,7 @@ size_t Rijndael::Dec::AdvancedProcessBlocks(const byte *inBlocks, const byte *xo
 
 	return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);
 }
-#endif	// CRYPTOPP_ENABLE_ADVANCED_PROCESS_BLOCKS
+#endif	// CRYPTOPP_RIJNDAEL_ADVANCED_PROCESS_BLOCKS
 
 NAMESPACE_END
 

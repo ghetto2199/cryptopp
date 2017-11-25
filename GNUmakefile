@@ -30,16 +30,15 @@ else
   GREP ?= grep
 endif
 
-IS_X86 := $(shell uname -m | $(GREP) -v "64" | $(GREP) -i -c -E "i.86|x86|i86")
-IS_X64 := $(shell uname -m | $(GREP) -i -c -E "(_64|d64)")
-IS_PPC32 := $(shell uname -m | $(GREP) -i -v "64" | $(GREP) -i -c -E "ppc|power")
-IS_PPC64 := $(shell uname -m | $(GREP) -i -c -E "ppc64|power64")
-IS_ARM32 := $(shell uname -m | $(GREP) -i -v "64" | $(GREP) -i -c -E 'armhf|arm7l|eabihf')
-IS_ARM64 := $(shell uname -m | $(GREP) -i -c 'aarch64')
-IS_ARMV8 ?= $(shell uname -m | $(GREP) -i -c -E 'aarch32|aarch64')
-IS_NEON ?= $(shell uname -m | $(GREP) -i -c -E 'armv7|armv8|aarch32|aarch64')
-IS_SPARC := $(shell uname -m | $(GREP) -i -c "sparc")
-IS_SPARC64 := $(shell uname -m | $(GREP) -i -c "sparc64")
+IS_X86 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -v "64" | $(GREP) -i -c -E "i.86|x86|i86")
+IS_X64 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E "(_64|d64)")
+IS_PPC32 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -v "64" | $(GREP) -i -c -E "ppc|power")
+IS_PPC64 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E "ppc64|power64")
+IS_ARM32 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -v "64" | $(GREP) -i "arm" | $(GREP) -i -c -E 'armhf|arm7l|eabihf')
+IS_ARMV8 ?= $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E 'aarch32|aarch64')
+IS_NEON ?= $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E 'armv7|armhf|arm7l|eabihf|armv8|aarch32|aarch64')
+IS_SPARC := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c "sparc")
+IS_SPARC64 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c "sparc64")
 
 IS_AIX := $(shell uname -s | $(GREP) -i -c 'aix')
 IS_SUN := $(shell uname -s | $(GREP) -i -c "SunOS")
@@ -56,7 +55,13 @@ GCC_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -v -E '(llvm|clan
 XLC_COMPILER := $(shell $(CXX) $(CXX) -qversion 2>/dev/null |$(GREP) -i -c "IBM XL")
 CLANG_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c -E '(llvm|clang)')
 INTEL_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c '\(icc\)')
+
+# Various Port compilers on OS X
 MACPORTS_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c "macports")
+HOMEBREW_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c "homebrew")
+ifneq ($(MACPORTS_COMPILER)$(HOMEBREW_COMPILER),00)
+  OSXPORT_COMPILER := 1
+endif
 
 # Sun Studio 12.0 provides SunCC 0x0510; and Sun Studio 12.3 provides SunCC 0x0512
 SUNCC_510_OR_LATER := $(shell $(CXX) -V 2>&1 | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[0-9]|5\.[2-9]|6\.)")
@@ -98,7 +103,7 @@ ifeq ($(IS_AIX),1)
   endif
 endif
 
-# Newlib needs _XOPEN_SOURCE=700 for signals
+# Newlib needs _XOPEN_SOURCE=600 for signals
 HAS_NEWLIB := $(shell $(CXX) -x c++ $(CXXFLAGS) -dM -E adhoc.cpp.proto 2>&1 | $(GREP) -i -c "__NEWLIB__")
 
 ###########################################################
@@ -175,7 +180,7 @@ endif # IS_MINGW32
 ifneq ($(IS_X86)$(IS_X32)$(IS_X64),000)
 
 # Fixup. Clang reports an error rather than "LLVM assembler" or similar.
-ifneq ($(MACPORTS_COMPILER),1)
+ifneq ($(OSXPORT_COMPILER),1)
   HAVE_GAS := $(shell $(CXX) -xc -c /dev/null -Wa,-v -o/dev/null 2>&1 | $(GREP) -c "GNU assembler")
 endif
 
@@ -226,9 +231,10 @@ endif  # -DCRYPTOPP_DISABLE_SSSE3
 endif  # -DCRYPTOPP_DISABLE_ASM
 endif  # CXXFLAGS
 
+# SSE2 is a core feature of x86_64
 ifeq ($(findstring -DCRYPTOPP_DISABLE_ASM,$(CXXFLAGS)),)
   ifeq ($(IS_X86),1)
-    CPU_FLAG = -msse2
+    SSE_FLAG = -msse2
   endif
 endif
 ifeq ($(findstring -DCRYPTOPP_DISABLE_SSSE3,$(CXXFLAGS)),)
@@ -236,11 +242,15 @@ ifeq ($(findstring -DCRYPTOPP_DISABLE_SSSE3,$(CXXFLAGS)),)
   ifeq ($(HAVE_SSSE3),1)
     ARIA_FLAG = -mssse3
     SSSE3_FLAG = -mssse3
+    SPECK_FLAG = -mssse3
   endif
 ifeq ($(findstring -DCRYPTOPP_DISABLE_SSE4,$(CXXFLAGS)),)
+  HAVE_SSE4 = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -msse4.1 -dM -E - 2>/dev/null | $(GREP) -i -c __SSE4_1__)
+  ifeq ($(HAVE_SSE4),1)
+    BLAKE2_FLAG = -msse4.1
+  endif
   HAVE_SSE4 = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -msse4.2 -dM -E - 2>/dev/null | $(GREP) -i -c __SSE4_2__)
   ifeq ($(HAVE_SSE4),1)
-    BLAKE2_FLAG = -msse4.2
     CRC_FLAG = -msse4.2
   endif
 ifeq ($(findstring -DCRYPTOPP_DISABLE_AESNI,$(CXXFLAGS)),)
@@ -264,25 +274,30 @@ endif  # -DCRYPTOPP_DISABLE_SSSE3
 
 # Begin SunCC
 ifeq ($(SUN_COMPILER),1)
-  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=ssse3 -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal value ignored")
+  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=ssse3 -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal")
   ifeq ($(COUNT),0)
     SSSE3_FLAG = -xarch=ssse3 -D__SSSE3__=1
     ARIA_FLAG = -xarch=ssse3 -D__SSSE3__=1
+    SPECK_FLAG = -xarch=ssse3 -D__SSSE3__=1
     LDFLAGS += -xarch=ssse3
   endif
-  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=sse4_2 -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal value ignored")
+  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=sse4_1 -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal")
   ifeq ($(COUNT),0)
-    BLAKE2_FLAG = -xarch=sse4_2 -D__SSE4_2__=1
+    BLAKE2_FLAG = -xarch=sse4_1 -D__SSE4_1__=1
+    LDFLAGS += -xarch=sse4_1
+  endif
+  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=sse4_2 -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal")
+  ifeq ($(COUNT),0)
     CRC_FLAG = -xarch=sse4_2 -D__SSE4_2__=1
     LDFLAGS += -xarch=sse4_2
   endif
-  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=aes -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal value ignored")
+  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=aes -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal")
   ifeq ($(COUNT),0)
     GCM_FLAG = -xarch=aes -D__PCLMUL__=1
     AES_FLAG = -xarch=aes -D__AES__=1
     LDFLAGS += -xarch=aes
   endif
-  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=sha -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal value ignored")
+  COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=sha -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal")
   ifeq ($(COUNT),0)
     SHA_FLAG = -xarch=sha -D__SHA__=1
     LDFLAGS += -xarch=sha
@@ -299,9 +314,9 @@ ifneq ($(INTEL_COMPILER),0)
   endif
 endif
 
-# Tell MacPorts GCC to use Clang integrated assembler
+# Tell MacPorts and Homebrew GCC to use Clang integrated assembler
 #   http://github.com/weidai11/cryptopp/issues/190
-ifeq ($(GCC_COMPILER)$(MACPORTS_COMPILER),11)
+ifeq ($(GCC_COMPILER)$(OSXPORT_COMPILER),11)
   ifeq ($(findstring -Wa,-q,$(CXXFLAGS)),)
     CXXFLAGS += -Wa,-q
   endif
@@ -344,6 +359,7 @@ ifeq ($(IS_NEON),1)
     GCM_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
     ARIA_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
     BLAKE2_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
+    SPECK_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
   endif
 endif
 
@@ -353,6 +369,7 @@ ifeq ($(IS_ARMV8),1)
     ARIA_FLAG = -march=armv8-a
     BLAKE2_FLAG = -march=armv8-a
     NEON_FLAG = -march=armv8-a
+    SPECK_FLAG = -march=armv8-a
   endif
   HAVE_CRC = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -march=armv8-a+crc -dM -E - 2>/dev/null | $(GREP) -i -c __ARM_FEATURE_CRC32)
   ifeq ($(HAVE_CRC),1)
@@ -989,13 +1006,13 @@ endif
 aria-simd.o : aria-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(ARIA_FLAG) -c) $<
 
-# SSE4.2 or ARMv8a available
+# SSE4.1 or ARMv8a available
 blake2-simd.o : blake2-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(BLAKE2_FLAG) -c) $<
 
 # SSE2 on i586
-cpu.o : cpu.cpp
-	$(CXX) $(strip $(CXXFLAGS) $(CPU_FLAG) -c) $<
+sse-simd.o : sse-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(SSE_FLAG) -c) $<
 
 # SSE4.2 or ARMv8a available
 crc-simd.o : crc-simd.cpp
@@ -1024,6 +1041,10 @@ sha-simd.o : sha-simd.cpp
 # SSE4.2/SHA-NI or ARMv8a available
 shacal2-simd.o : shacal2-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(SHA_FLAG) -c) $<
+
+# SSE4.1 or ARMv8a available
+speck-simd.o : speck-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(SPECK_FLAG) -c) $<
 
 # Don't build Threefish with UBsan on Travis CI. Timeouts cause the build to fail.
 #   Also see http://stackoverflow.com/q/12983137/608639.

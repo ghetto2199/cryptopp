@@ -7,30 +7,21 @@
 
 #include "threefish.h"
 #include "misc.h"
-#include "cpu.h"
 #include "algparam.h"
 #include "argnames.h"
 
 ANONYMOUS_NAMESPACE_BEGIN
 
-#if defined(__clang__)
-# define rotatel64(x,y) rotlVariable(x,y)
-# define rotater64(x,y) rotrVariable(x,y)
-#else
-# define rotatel64(x,y) rotlFixed(x,y)
-# define rotater64(x,y) rotrFixed(x,y)
-#endif
-
 #define G256(G0, G1, G2, G3, C0, C1) \
     G0 += G1; \
-    G1 = rotatel64(G1, C0) ^ G0; \
+    G1 = rotlVariable(G1, C0) ^ G0; \
     G2 += G3; \
-    G3 = rotatel64(G3, C1) ^ G2;
+    G3 = rotlVariable(G3, C1) ^ G2;
 
 #define IG256(G0, G1, G2, G3, C0, C1) \
-    G3 = rotater64(G3 ^ G2, C1); \
+    G3 = rotrVariable(G3 ^ G2, C1); \
     G2 -= G3; \
-    G1 = rotater64(G1 ^ G0, C0); \
+    G1 = rotrVariable(G1 ^ G0, C0); \
     G0 -= G1; \
 
 #define KS256(r) \
@@ -70,24 +61,24 @@ ANONYMOUS_NAMESPACE_BEGIN
     IKS256(r - 1);
 
 #define IG512(G0, G1, G2, G3, G4, G5, G6, G7, C0, C1, C2, C3) \
-    G7 = rotater64(G7 ^ G6, C3); \
+    G7 = rotrVariable(G7 ^ G6, C3); \
     G6 -= G7; \
-    G5 = rotater64(G5 ^ G4, C2); \
+    G5 = rotrVariable(G5 ^ G4, C2); \
     G4 -= G5; \
-    G3 = rotater64(G3 ^ G2, C1); \
+    G3 = rotrVariable(G3 ^ G2, C1); \
     G2 -= G3; \
-    G1 = rotater64(G1 ^ G0, C0); \
+    G1 = rotrVariable(G1 ^ G0, C0); \
     G0 -= G1;
 
 #define G512(G0, G1, G2, G3, G4, G5, G6, G7, C0, C1, C2, C3) \
     G0 += G1; \
-    G1 = rotatel64(G1, C0) ^ G0; \
+    G1 = rotlVariable(G1, C0) ^ G0; \
     G2 += G3; \
-    G3 = rotatel64(G3, C1) ^ G2; \
+    G3 = rotlVariable(G3, C1) ^ G2; \
     G4 += G5; \
-    G5 = rotatel64(G5, C2) ^ G4; \
+    G5 = rotlVariable(G5, C2) ^ G4; \
     G6 += G7; \
-    G7 = rotatel64(G7, C3) ^ G6;
+    G7 = rotlVariable(G7, C3) ^ G6;
 
 #define IKS512(r) \
     G0 -= m_rkey[(r + 1) % 9]; \
@@ -134,40 +125,40 @@ ANONYMOUS_NAMESPACE_BEGIN
     KS512(r + 1)
 
 #define IG1024(G0, G1, G2, G3, G4, G5, G6, G7, G8, G9, G10, G11, G12, G13, G14, G15, C1, C2, C3, C4, C5, C6, C7, C8) \
-    G15 = rotater64(G15 ^ G14, C8); \
+    G15 = rotrVariable(G15 ^ G14, C8); \
     G14 -= G15; \
-    G13 = rotater64(G13 ^ G12, C7); \
+    G13 = rotrVariable(G13 ^ G12, C7); \
     G12 -= G13; \
-    G11 = rotater64(G11 ^ G10, C6); \
+    G11 = rotrVariable(G11 ^ G10, C6); \
     G10 -= G11; \
-    G9 = rotater64(G9 ^ G8, C5); \
+    G9 = rotrVariable(G9 ^ G8, C5); \
     G8 -= G9; \
-    G7 = rotater64(G7 ^ G6, C4); \
+    G7 = rotrVariable(G7 ^ G6, C4); \
     G6 -= G7; \
-    G5 = rotater64(G5 ^ G4, C3); \
+    G5 = rotrVariable(G5 ^ G4, C3); \
     G4 -= G5; \
-    G3 = rotater64(G3 ^ G2, C2); \
+    G3 = rotrVariable(G3 ^ G2, C2); \
     G2 -= G3; \
-    G1 = rotater64(G1 ^ G0, C1); \
+    G1 = rotrVariable(G1 ^ G0, C1); \
     G0 -= G1;
 
 #define G1024(G0, G1, G2, G3, G4, G5, G6, G7, G8, G9, G10, G11, G12, G13, G14, G15, C1, C2, C3, C4, C5, C6, C7, C8) \
     G0 += G1; \
-    G1 = rotatel64(G1, C1) ^ G0; \
+    G1 = rotlVariable(G1, C1) ^ G0; \
     G2 += G3; \
-    G3 = rotatel64(G3, C2) ^ G2; \
+    G3 = rotlVariable(G3, C2) ^ G2; \
     G4 += G5; \
-    G5 = rotatel64(G5, C3) ^ G4; \
+    G5 = rotlVariable(G5, C3) ^ G4; \
     G6 += G7; \
-    G7 = rotatel64(G7, C4) ^ G6; \
+    G7 = rotlVariable(G7, C4) ^ G6; \
     G8 += G9; \
-    G9 = rotatel64(G9, C5) ^ G8; \
+    G9 = rotlVariable(G9, C5) ^ G8; \
     G10 += G11; \
-    G11 = rotatel64(G11, C6) ^ G10; \
+    G11 = rotlVariable(G11, C6) ^ G10; \
     G12 += G13; \
-    G13 = rotatel64(G13, C7) ^ G12; \
+    G13 = rotlVariable(G13, C7) ^ G12; \
     G14 += G15; \
-    G15 = rotatel64(G15, C8) ^ G14;
+    G15 = rotlVariable(G15, C8) ^ G14;
 
 #define IKS1024(r) \
     G0 -= m_rkey[(r + 1) % 17]; \
@@ -236,100 +227,85 @@ ANONYMOUS_NAMESPACE_END
 
 NAMESPACE_BEGIN(CryptoPP)
 
-void Threefish::Base::UncheckedSetKey(const byte *key, unsigned int keylen, const NameValuePairs &params)
+void Threefish256::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params)
 {
-    switch (keylen)
-    {
-    case 32:  // 256
-        m_rkey.New(5);
-        m_wspace.New(4);
-        m_blocksize = 32;
+    // Blocksize is Keylength for Threefish
+    CRYPTOPP_ASSERT(keyLength == KEYLENGTH);
 
-        GetUserKey(LITTLE_ENDIAN_ORDER, m_rkey.begin(), 4, key, 32);
-        m_rkey[4] = W64LIT(0x1BD11BDAA9FC1A22) ^ m_rkey[0] ^ m_rkey[1] ^ m_rkey[2] ^ m_rkey[3];
-        break;
-    case 64:  // 512
-        m_rkey.New(9);
-        m_wspace.New(8);
-        m_blocksize = 64;
+    m_rkey.New(5);
+    m_wspace.New(4);
 
-        GetUserKey(LITTLE_ENDIAN_ORDER, m_rkey.begin(), 8, key, 64);
-        m_rkey[8] = W64LIT(0x1BD11BDAA9FC1A22) ^ m_rkey[0] ^ m_rkey[1] ^ m_rkey[2] ^ m_rkey[3] ^ m_rkey[4] ^
-            m_rkey[5] ^ m_rkey[6] ^ m_rkey[7];
-        break;
-    case 128:  // 128
-        m_rkey.New(17);
-        m_wspace.New(16);
-        m_blocksize = 128;
+    GetUserKey(LITTLE_ENDIAN_ORDER, m_rkey.begin(), 4, userKey, keyLength);
+    m_rkey[4] = W64LIT(0x1BD11BDAA9FC1A22) ^ m_rkey[0] ^ m_rkey[1] ^ m_rkey[2] ^ m_rkey[3];
 
-        GetUserKey(LITTLE_ENDIAN_ORDER, m_rkey.begin(), 16, key, 128);
-        m_rkey[16] = W64LIT(0x1BD11BDAA9FC1A22) ^ m_rkey[0] ^ m_rkey[1] ^ m_rkey[2] ^ m_rkey[3] ^ m_rkey[4] ^
-            m_rkey[5] ^ m_rkey[6] ^ m_rkey[7] ^ m_rkey[8] ^ m_rkey[9] ^ m_rkey[10] ^ m_rkey[11] ^ m_rkey[12] ^
-            m_rkey[13] ^ m_rkey[14] ^ m_rkey[15];
-        break;
-    default:
-        CRYPTOPP_ASSERT(0);
-    }
-
-    m_tweak.New(3);
-    ConstByteArrayParameter t;
-    if (params.GetValue(Name::Tweak(), t))
-    {
-        CRYPTOPP_ASSERT(t.size() == 16);
-        GetUserKey(LITTLE_ENDIAN_ORDER, m_tweak.begin(), 2, t.begin(), 16);
-        m_tweak[2] = m_tweak[0] ^ m_tweak[1];
-    }
-    else
-    {
-        ::memset(m_tweak.begin(), 0x00, 24);
-    }
+    SetTweak(params);
 }
 
-void Threefish::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
-{
-    switch(m_blocksize)
-    {
-    case 32:
-        ProcessAndXorBlock_256(inBlock, xorBlock, outBlock);
-        break;
-    case 64:
-        ProcessAndXorBlock_512(inBlock, xorBlock, outBlock);
-        break;
-    case 128:
-        ProcessAndXorBlock_1024(inBlock, xorBlock, outBlock);
-        break;
-    default:
-        CRYPTOPP_ASSERT(0);
-    }
-}
-
-void Threefish::Enc::ProcessAndXorBlock_256(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
+void Threefish256::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     word64 &G0=m_wspace[0], &G1=m_wspace[1], &G2=m_wspace[2], &G3=m_wspace[3];
 
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
     typedef GetBlock<word64, LittleEndian, false> InBlock;
     InBlock iblk(inBlock);
     iblk(G0)(G1)(G2)(G3);
 
-    G0 += m_rkey[0]; G1 += m_rkey[1]; G2 += m_rkey[2]; G3 += m_rkey[3];
-    G1 += m_tweak[0]; G2 += m_tweak[1];
+    G0 += m_rkey[0]; G1 += m_rkey[1]; G2 += m_rkey[2];
+    G3 += m_rkey[3]; G1 += m_tweak[0]; G2 += m_tweak[1];
 
     G256x8(0); G256x8(2); G256x8(4); G256x8(6); G256x8(8);
     G256x8(10); G256x8(12); G256x8(14); G256x8(16);
 
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
     typedef PutBlock<word64, LittleEndian, false> OutBlock;
     OutBlock oblk(xorBlock, outBlock);
     oblk(G0)(G1)(G2)(G3);
 }
 
-void Threefish::Enc::ProcessAndXorBlock_512(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
+void Threefish256::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
+{
+    word64 &G0=m_wspace[0], &G1=m_wspace[1], &G2=m_wspace[2], &G3=m_wspace[3];
+
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
+    typedef GetBlock<word64, LittleEndian, false> InBlock;
+    InBlock iblk(inBlock);
+    iblk(G0)(G1)(G2)(G3);
+
+    G0 -= m_rkey[3]; G1 -= m_rkey[4]; G2 -= m_rkey[0]; G3 -= m_rkey[1];
+    G1 -= m_tweak[0]; G2 -= m_tweak[1]; G3 -= 18;
+
+    IG256x8(16); IG256x8(14); IG256x8(12); IG256x8(10);
+    IG256x8(8); IG256x8(6); IG256x8(4); IG256x8(2); IG256x8(0);
+
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
+    typedef PutBlock<word64, LittleEndian, false> OutBlock;
+    OutBlock oblk(xorBlock, outBlock);
+    oblk(G0)(G1)(G2)(G3);
+}
+
+/////////////////////////////////////////////////////////////////
+
+void Threefish512::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params)
+{
+    // Blocksize is Keylength for Threefish
+    CRYPTOPP_ASSERT(keyLength == KEYLENGTH);
+
+    m_rkey.New(9);
+    m_wspace.New(8);
+
+    GetUserKey(LITTLE_ENDIAN_ORDER, m_rkey.begin(), 8, userKey, keyLength);
+    m_rkey[8] = W64LIT(0x1BD11BDAA9FC1A22) ^ m_rkey[0] ^ m_rkey[1] ^ m_rkey[2] ^ m_rkey[3] ^ m_rkey[4] ^
+        m_rkey[5] ^ m_rkey[6] ^ m_rkey[7];
+
+    SetTweak(params);
+}
+
+void Threefish512::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     word64 &G0=m_wspace[0],   &G1=m_wspace[1],   &G2=m_wspace[2],   &G3=m_wspace[3];
     word64 &G4=m_wspace[4],   &G5=m_wspace[5],   &G6=m_wspace[6],   &G7=m_wspace[7];
 
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
     typedef GetBlock<word64, LittleEndian, false> InBlock;
     InBlock iblk(inBlock);
     iblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7);
@@ -342,20 +318,61 @@ void Threefish::Enc::ProcessAndXorBlock_512(const byte *inBlock, const byte *xor
     G512x8(0); G512x8(2); G512x8(4); G512x8(6); G512x8(8);
     G512x8(10); G512x8(12); G512x8(14); G512x8(16);
 
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
     typedef PutBlock<word64, LittleEndian, false> OutBlock;
     OutBlock oblk(xorBlock, outBlock);
     oblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7);
 }
 
-void Threefish::Enc::ProcessAndXorBlock_1024(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
+void Threefish512::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
+{
+    word64 &G0=m_wspace[0],   &G1=m_wspace[1],   &G2=m_wspace[2],   &G3=m_wspace[3];
+    word64 &G4=m_wspace[4],   &G5=m_wspace[5],   &G6=m_wspace[6],   &G7=m_wspace[7];
+
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
+    typedef GetBlock<word64, LittleEndian, false> InBlock;
+    InBlock iblk(inBlock);
+    iblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7);
+
+    G0 -= m_rkey[0]; G1 -= m_rkey[1]; G2 -= m_rkey[2]; G3 -= m_rkey[3];
+    G4 -= m_rkey[4]; G5 -= m_rkey[5]; G6 -= m_rkey[6]; G7 -= m_rkey[7];
+    G5 -= m_tweak[0]; G6 -= m_tweak[1]; G7 -= 18;
+
+    IG512x8(16); IG512x8(14); IG512x8(12); IG512x8(10);
+    IG512x8(8); IG512x8(6); IG512x8(4); IG512x8(2); IG512x8(0);
+
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
+    typedef PutBlock<word64, LittleEndian, false> OutBlock;
+    OutBlock oblk(xorBlock, outBlock);
+    oblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7);
+}
+
+/////////////////////////////////////////////////////////////////
+
+void Threefish1024::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params)
+{
+    // Blocksize is Keylength for Threefish
+    CRYPTOPP_ASSERT(keyLength == KEYLENGTH);
+
+    m_rkey.New(17);
+    m_wspace.New(16);
+
+    GetUserKey(LITTLE_ENDIAN_ORDER, m_rkey.begin(), 16, userKey, keyLength);
+    m_rkey[16] = W64LIT(0x1BD11BDAA9FC1A22) ^ m_rkey[0] ^ m_rkey[1] ^ m_rkey[2] ^ m_rkey[3] ^ m_rkey[4] ^
+        m_rkey[5] ^ m_rkey[6] ^ m_rkey[7] ^ m_rkey[8] ^ m_rkey[9] ^ m_rkey[10] ^ m_rkey[11] ^ m_rkey[12] ^
+        m_rkey[13] ^ m_rkey[14] ^ m_rkey[15];
+
+    SetTweak(params);
+}
+
+void Threefish1024::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     word64  &G0=m_wspace[0],   &G1=m_wspace[1],   &G2=m_wspace[2],   &G3=m_wspace[3];
     word64  &G4=m_wspace[4],   &G5=m_wspace[5],   &G6=m_wspace[6],   &G7=m_wspace[7];
     word64  &G8=m_wspace[8],   &G9=m_wspace[9],  &G10=m_wspace[10], &G11=m_wspace[11];
     word64 &G12=m_wspace[12], &G13=m_wspace[13], &G14=m_wspace[14], &G15=m_wspace[15];
 
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
     typedef GetBlock<word64, LittleEndian, false> InBlock;
     InBlock iblk(inBlock);
     iblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7)(G8)(G9)(G10)(G11)(G12)(G13)(G14)(G15);
@@ -369,82 +386,20 @@ void Threefish::Enc::ProcessAndXorBlock_1024(const byte *inBlock, const byte *xo
     G1024x8(0); G1024x8(2); G1024x8(4); G1024x8(6); G1024x8(8);
     G1024x8(10); G1024x8(12); G1024x8(14); G1024x8(16); G1024x8(18);
 
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
     typedef PutBlock<word64, LittleEndian, false> OutBlock;
     OutBlock oblk(xorBlock, outBlock);
     oblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7)(G8)(G9)(G10)(G11)(G12)(G13)(G14)(G15);
 }
 
-void Threefish::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
-{
-    switch(m_blocksize)
-    {
-    case 32:
-        ProcessAndXorBlock_256(inBlock, xorBlock, outBlock);
-        break;
-    case 64:
-        ProcessAndXorBlock_512(inBlock, xorBlock, outBlock);
-        break;
-    case 128:
-        ProcessAndXorBlock_1024(inBlock, xorBlock, outBlock);
-        break;
-    default:
-        CRYPTOPP_ASSERT(0);
-    }
-}
-
-void Threefish::Dec::ProcessAndXorBlock_256(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
-{
-    word64 &G0=m_wspace[0], &G1=m_wspace[1], &G2=m_wspace[2], &G3=m_wspace[3];
-
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
-    typedef GetBlock<word64, LittleEndian, false> InBlock;
-    InBlock iblk(inBlock);
-    iblk(G0)(G1)(G2)(G3);
-
-    G0 -= m_rkey[3]; G1 -= m_rkey[4]; G2 -= m_rkey[0]; G3 -= m_rkey[1];
-    G1 -= m_tweak[0]; G2 -= m_tweak[1]; G3 -= 18;
-
-    IG256x8(16); IG256x8(14); IG256x8(12); IG256x8(10);
-    IG256x8(8); IG256x8(6); IG256x8(4); IG256x8(2); IG256x8(0);
-
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
-    typedef PutBlock<word64, LittleEndian, false> OutBlock;
-    OutBlock oblk(xorBlock, outBlock);
-    oblk(G0)(G1)(G2)(G3);
-}
-
-void Threefish::Dec::ProcessAndXorBlock_512(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
-{
-    word64 &G0=m_wspace[0],   &G1=m_wspace[1],   &G2=m_wspace[2],   &G3=m_wspace[3];
-    word64 &G4=m_wspace[4],   &G5=m_wspace[5],   &G6=m_wspace[6],   &G7=m_wspace[7];
-
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
-    typedef GetBlock<word64, LittleEndian, false> InBlock;
-    InBlock iblk(inBlock);
-    iblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7);
-
-    G0 -= m_rkey[0]; G1 -= m_rkey[1]; G2 -= m_rkey[2]; G3 -= m_rkey[3];
-    G4 -= m_rkey[4]; G5 -= m_rkey[5]; G6 -= m_rkey[6]; G7 -= m_rkey[7];
-    G5 -= m_tweak[0]; G6 -= m_tweak[1];    G7 -= 18;
-
-    IG512x8(16); IG512x8(14); IG512x8(12); IG512x8(10);
-    IG512x8(8); IG512x8(6); IG512x8(4); IG512x8(2); IG512x8(0);
-
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
-    typedef PutBlock<word64, LittleEndian, false> OutBlock;
-    OutBlock oblk(xorBlock, outBlock);
-    oblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7);
-}
-
-void Threefish::Dec::ProcessAndXorBlock_1024(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
+void Threefish1024::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     word64  &G0=m_wspace[0],   &G1=m_wspace[1],   &G2=m_wspace[2],   &G3=m_wspace[3];
     word64  &G4=m_wspace[4],   &G5=m_wspace[5],   &G6=m_wspace[6],   &G7=m_wspace[7];
     word64  &G8=m_wspace[8],   &G9=m_wspace[9],  &G10=m_wspace[10], &G11=m_wspace[11];
     word64 &G12=m_wspace[12], &G13=m_wspace[13], &G14=m_wspace[14], &G15=m_wspace[15];
 
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
     typedef GetBlock<word64, LittleEndian, false> InBlock;
     InBlock iblk(inBlock);
     iblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7)(G8)(G9)(G10)(G11)(G12)(G13)(G14)(G15);
@@ -458,7 +413,7 @@ void Threefish::Dec::ProcessAndXorBlock_1024(const byte *inBlock, const byte *xo
     IG1024x8(18); IG1024x8(16); IG1024x8(14); IG1024x8(12); IG1024x8(10);
     IG1024x8(8); IG1024x8(6); IG1024x8(4); IG1024x8(2); IG1024x8(0);
 
-    // Reverse bytes on BigEndian; Align pointer on LittleEndian
+    // Reverse bytes on BigEndian; align pointer on LittleEndian
     typedef PutBlock<word64, LittleEndian, false> OutBlock;
     OutBlock oblk(xorBlock, outBlock);
     oblk(G0)(G1)(G2)(G3)(G4)(G5)(G6)(G7)(G8)(G9)(G10)(G11)(G12)(G13)(G14)(G15);

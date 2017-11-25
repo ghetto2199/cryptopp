@@ -44,6 +44,7 @@ bool ValidateRIPEMD();
 bool ValidatePanama();
 bool ValidateWhirlpool();
 
+bool ValidateSM3();
 bool ValidateBLAKE2s();
 bool ValidateBLAKE2b();
 bool ValidatePoly1305();
@@ -105,7 +106,7 @@ bool ValidateRW();
 bool ValidateECP();
 bool ValidateEC2N();
 bool ValidateECDSA();
-bool ValidateECGDSA();
+bool ValidateECGDSA(bool thorough);
 bool ValidateESIGN();
 
 bool ValidateHashDRBG();
