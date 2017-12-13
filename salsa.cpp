@@ -16,8 +16,6 @@
 # pragma warning(disable: 4702 4740)
 #endif
 
-// TODO: work around GCC 4.8+ issue with SSE2 ASM until the exact details are known
-//   and fix is released. Duplicate with "valgrind ./cryptest.exe tv salsa"
 // Clang due to "Inline assembly operands don't work with .intel_syntax"
 //   https://llvm.org/bugs/show_bug.cgi?id=24232
 #if defined(CRYPTOPP_DISABLE_SALSA_ASM)
@@ -74,7 +72,7 @@ void Salsa20_Policy::SeekToIteration(lword iterationCount)
 	m_state[5] = (word32)SafeRightShift<32>(iterationCount);
 }
 
-#if (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64) && !defined(CRYPTOPP_DISABLE_SALSA_ASM)
+#if (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X64)
 unsigned int Salsa20_Policy::GetAlignment() const
 {
 #if CRYPTOPP_SSE2_ASM_AVAILABLE

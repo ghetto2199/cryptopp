@@ -1,7 +1,7 @@
 // config.h - originally written and placed in the public domain by Wei Dai
 
-//! \file config.h
-//! \brief Library configuration file
+/// \file config.h
+/// \brief Library configuration file
 
 #ifndef CRYPTOPP_CONFIG_H
 #define CRYPTOPP_CONFIG_H
@@ -163,15 +163,15 @@
 
 #ifdef CRYPTOPP_DOXYGEN_PROCESSING
 // Document the namespce exists. Put it here before CryptoPP is undefined below.
-//! \namespace CryptoPP
-//! \brief Crypto++ library namespace
-//! \details Nearly all classes are located in the CryptoPP namespace. Within
-//!   the namespace, there are two additional namespaces.
-//!   <ul>
-//!     <li>Name - namespace for names used with \p NameValuePairs and documented in argnames.h
-//!     <li>Test - namespace for testing and benchmarks classes
-//!     <li>Weak - namespace for weak and wounded algorithms, like ARC4, MD5 and Pananma
-//!   </ul>
+/// \namespace CryptoPP
+/// \brief Crypto++ library namespace
+/// \details Nearly all classes are located in the CryptoPP namespace. Within
+///   the namespace, there are two additional namespaces.
+///   <ul>
+///     <li>Name - namespace for names used with \p NameValuePairs and documented in argnames.h
+///     <li>Test - namespace for testing and benchmarks classes
+///     <li>Weak - namespace for weak and wounded algorithms, like ARC4, MD5 and Pananma
+///   </ul>
 namespace CryptoPP { }
 // Bring in the symbols fund in the weak namespace; and fold Weak1 into Weak
 #		define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
@@ -270,7 +270,7 @@ const lword LWORD_MAX = W64LIT(0xffffffffffffffff);
 	#define CRYPTOPP_GCC_DIAGNOSTIC_AVAILABLE 1
 #endif
 
-// Clang due to "Inline assembly operands don't work with .intel_syntax", http://llvm.org/bugs/show_bug.cgi?id=24232
+// Clang due to "Inline assembly operands don't work with .intel_syntax", http://llvm.org/bugs/show_bug.cgi?id=24232. Still broke as of Clang 3.9.
 //   TODO: supply the upper version when LLVM fixes it. We set it to 20.0 for compilation purposes.
 #if (defined(CRYPTOPP_LLVM_CLANG_VERSION) && (CRYPTOPP_LLVM_CLANG_VERSION <= 200000)) || \
 	(defined(CRYPTOPP_APPLE_CLANG_VERSION) && (CRYPTOPP_APPLE_CLANG_VERSION <= 200000)) || \
@@ -562,20 +562,10 @@ NAMESPACE_END
 // Requires ARMv7 and ACLE 1.0. Testing shows ARMv7 is really ARMv7a under most toolchains.
 // Android still uses ARMv5 and ARMv6 so we have to be conservative when enabling NEON.
 #if !defined(CRYPTOPP_ARM_NEON_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ASM)
-# if defined(__ARM_NEON__) || defined(__ARM_FEATURE_NEON) || \
+# if defined(__ARM_NEON) || defined(__ARM_NEON_FP) || defined(__ARM_FEATURE_NEON) || defined(__ARM_FEATURE_ASIMD) || \
 	(__ARM_ARCH >= 7) || (CRYPTOPP_MSC_VERSION >= 1700)
 #  define CRYPTOPP_ARM_NEON_AVAILABLE 1
 # endif
-#endif
-
-// Don't include <arm_acle.h> when using Apple Clang. Early Apple compilers
-//  fail to compile with <arm_acle.h> included. Later Apple compilers compile
-//  intrinsics without <arm_acle.h> included. Also avoid it with GCC 4.8,
-//  and avoid it on Android, too.
-#if !defined(CRYPTOPP_APPLE_CLANG_VERSION) && \
-	(!defined(CRYPTOPP_GCC_VERSION) || (CRYPTOPP_GCC_VERSION >= 40900)) && \
-	!defined(__ANDROID__)
-#  define CRYPTOPP_ARM_ACLE_AVAILABLE 1
 #endif
 
 // Requires ARMv8 and ACLE 2.0. GCC requires 4.8 and above.
@@ -613,6 +603,16 @@ NAMESPACE_END
 # endif
 #endif
 
+// Don't include <arm_acle.h> when using Apple Clang. Early Apple compilers
+//  fail to compile with <arm_acle.h> included. Later Apple compilers compile
+//  intrinsics without <arm_acle.h> included. Also avoid it with GCC 4.8,
+//  and avoid it on Android, too.
+#if defined(CRYPTOPP_ARM_NEON_AVAILABLE) || defined(CRYPTOPP_ARM_CRC32_AVAILABLE) || \
+	defined(CRYPTOPP_ARM_AES_AVAILABLE) || defined(CRYPTOPP_ARM_PMULL_AVAILABLE) || \
+	defined(CRYPTOPP_ARM_SHA_AVAILABLE)
+#  define CRYPTOPP_ARM_ACLE_AVAILABLE 1
+#endif
+
 #endif  // ARM32, ARM64
 
 // ***************** AltiVec and Power8 ********************
@@ -629,19 +629,28 @@ NAMESPACE_END
 #endif
 
 // An old Apple G5 with GCC 4.01 has AltiVec, but its only Power4 or so.
-// We need Power7 or above, so the makefile defines CRYPTOPP_DISABLE_ALTIVEC.
 #if !defined(CRYPTOPP_ALTIVEC_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ALTIVEC)
-# if defined(_ARCH_PWR4) || (CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40100)
+# if defined(_ARCH_PWR4) || defined(__ALTIVEC__) || \
+	(CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40001)
 #  define CRYPTOPP_ALTIVEC_AVAILABLE 1
 # endif
 #endif
 
+// We need Power5 for 'vector unsigned long long'
+#if !defined(CRYPTOPP_POWER5_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER5) && defined(CRYPTOPP_ALTIVEC_AVAILABLE)
+# if defined(_ARCH_PWR5) || (CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40100)
+#  define CRYPTOPP_POWER5_AVAILABLE 1
+# endif
+#endif
+
+// We need Power7 for unaligned loads and stores
 #if !defined(CRYPTOPP_POWER7_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER7) && defined(CRYPTOPP_ALTIVEC_AVAILABLE)
 # if defined(_ARCH_PWR7) || (CRYPTOPP_XLC_VERSION >= 100000) || (CRYPTOPP_GCC_VERSION >= 40100)
 #  define CRYPTOPP_POWER7_AVAILABLE 1
 # endif
 #endif
 
+// We need Power8 for in-core crypto
 #if !defined(CRYPTOPP_POWER8_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER8) && defined(CRYPTOPP_POWER7_AVAILABLE)
 # if defined(_ARCH_PWR8) || (CRYPTOPP_XLC_VERSION >= 130000) || (CRYPTOPP_GCC_VERSION >= 40800)
 #  define CRYPTOPP_POWER8_AVAILABLE 1

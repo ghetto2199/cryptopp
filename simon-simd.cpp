@@ -1,4 +1,4 @@
-// speck-simd.cpp - written and placed in the public domain by Jeffrey Walton
+// simon-simd.cpp - written and placed in the public domain by Jeffrey Walton
 //
 //    This source file uses intrinsics and built-ins to gain access to
 //    SSSE3, ARM NEON and ARMv8a, and Power7 Altivec instructions. A separate
@@ -8,24 +8,15 @@
 #include "pch.h"
 #include "config.h"
 
-#include "speck.h"
+#include "simon.h"
 #include "misc.h"
 #include "adv-simd.h"
 
 // Uncomment for benchmarking C++ against SSE or NEON.
-// Do so in both speck.cpp and speck-simd.cpp.
+// Do so in both simon.cpp and simon-simd.cpp.
 // #undef CRYPTOPP_SSSE3_AVAILABLE
 // #undef CRYPTOPP_SSE41_AVAILABLE
 // #undef CRYPTOPP_ARM_NEON_AVAILABLE
-
-// GCC generates bad code when using the table-based 32-bit rotates. Or,
-// GAS assembles it incorrectly (this may be the case since both GCC and
-// Clang produce the same failure). SIMON uses the same code but with a
-// different round function, and SIMON is OK. Jake Lee warned about this
-// at http://stackoverflow.com/q/47617331/608639.
-#if (defined(__aarch32__) || defined(__aarch64__)) && defined(__GNUC__)
-# define WORKAROUND_GCC_AARCH64_BUG 1
-#endif
 
 #if (CRYPTOPP_ARM_NEON_AVAILABLE)
 # include <arm_neon.h>
@@ -50,6 +41,9 @@ ANONYMOUS_NAMESPACE_BEGIN
 using CryptoPP::byte;
 using CryptoPP::word32;
 using CryptoPP::word64;
+using CryptoPP::rotlFixed;
+using CryptoPP::rotrFixed;
+using CryptoPP::vec_swap;  // SunCC
 
 // *************************** ARM NEON ************************** //
 
@@ -71,7 +65,7 @@ inline uint32x4_t RotateRight32(const uint32x4_t& val)
     return vorrq_u32(a, b);
 }
 
-#if (defined(__aarch32__) || defined(__aarch64__)) && !defined(WORKAROUND_GCC_AARCH64_BUG)
+#if defined(__aarch32__) || defined(__aarch64__)
 // Faster than two Shifts and an Or. Thanks to Louis Wingers and Bryan Weeks.
 template <>
 inline uint32x4_t RotateLeft32<8>(const uint32x4_t& val)
@@ -115,27 +109,40 @@ inline uint32x4_t Shuffle32(const uint32x4_t& val)
 #endif
 }
 
-inline void SPECK64_Enc_Block(uint32x4_t &block0, uint32x4_t &block1,
+inline uint32x4_t SIMON64_f(const uint32x4_t& val)
+{
+    return veorq_u32(RotateLeft32<2>(val),
+        vandq_u32(RotateLeft32<1>(val), RotateLeft32<8>(val)));
+}
+
+inline void SIMON64_Enc_Block(uint32x4_t &block1, uint32x4_t &block0,
     const word32 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read from
     // a big-endian byte array. Depending on the number of blocks it needs to
-    // be permuted to the following.
+    // be permuted to the following. If only a single block is available then
+    // a Zero block is provided to promote vectorizations.
     // [A1 A2 A3 A4][B1 B2 B3 B4] ... => [A1 A3 B1 B3][A2 A4 B2 B4] ...
     uint32x4_t x1 = vuzpq_u32(block0, block1).val[0];
     uint32x4_t y1 = vuzpq_u32(block0, block1).val[1];
 
     x1 = Shuffle32(x1); y1 = Shuffle32(y1);
 
-    for (size_t i=0; static_cast<int>(i)<rounds; ++i)
+    for (size_t i = 0; static_cast<int>(i) < (rounds & ~1)-1; i += 2)
     {
-        const uint32x4_t rk = vdupq_n_u32(subkeys[i]);
+        const uint32x4_t rk1 = vld1q_dup_u32(subkeys+i);
+        y1 = veorq_u32(veorq_u32(y1, SIMON64_f(x1)), rk1);
 
-        x1 = RotateRight32<8>(x1);
-        x1 = vaddq_u32(x1, y1);
-        x1 = veorq_u32(x1, rk);
-        y1 = RotateLeft32<3>(y1);
-        y1 = veorq_u32(y1, x1);
+        const uint32x4_t rk2 = vld1q_dup_u32(subkeys+i+1);
+        x1 = veorq_u32(veorq_u32(x1, SIMON64_f(y1)), rk2);
+    }
+
+    if (rounds & 1)
+    {
+        const uint32x4_t rk = vld1q_dup_u32(subkeys+rounds-1);
+
+        y1 = veorq_u32(veorq_u32(y1, SIMON64_f(x1)), rk);
+        std::swap(x1, y1);
     }
 
     x1 = Shuffle32(x1); y1 = Shuffle32(y1);
@@ -145,27 +152,35 @@ inline void SPECK64_Enc_Block(uint32x4_t &block0, uint32x4_t &block1,
     block1 = vzipq_u32(x1, y1).val[1];
 }
 
-inline void SPECK64_Dec_Block(uint32x4_t &block0, uint32x4_t &block1,
+inline void SIMON64_Dec_Block(uint32x4_t &block0, uint32x4_t &block1,
     const word32 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read from
     // a big-endian byte array. Depending on the number of blocks it needs to
-    // be permuted to the following.
+    // be permuted to the following. If only a single block is available then
+    // a Zero block is provided to promote vectorizations.
     // [A1 A2 A3 A4][B1 B2 B3 B4] ... => [A1 A3 B1 B3][A2 A4 B2 B4] ...
     uint32x4_t x1 = vuzpq_u32(block0, block1).val[0];
     uint32x4_t y1 = vuzpq_u32(block0, block1).val[1];
 
     x1 = Shuffle32(x1); y1 = Shuffle32(y1);
 
-    for (size_t i=rounds-1; static_cast<int>(i)>=0; --i)
+    if (rounds & 1)
     {
-        const uint32x4_t rk = vdupq_n_u32(subkeys[i]);
+        std::swap(x1, y1);
+        const uint32x4_t rk = vld1q_dup_u32(subkeys + rounds - 1);
 
-        y1 = veorq_u32(y1, x1);
-        y1 = RotateRight32<3>(y1);
-        x1 = veorq_u32(x1, rk);
-        x1 = vsubq_u32(x1, y1);
-        x1 = RotateLeft32<8>(x1);
+        y1 = veorq_u32(veorq_u32(y1, rk), SIMON64_f(x1));
+        rounds--;
+    }
+
+    for (size_t i = rounds-2; static_cast<int>(i) >= 0; i -= 2)
+    {
+        const uint32x4_t rk1 = vld1q_dup_u32(subkeys+i+1);
+        x1 = veorq_u32(veorq_u32(x1, SIMON64_f(y1)), rk1);
+
+        const uint32x4_t rk2 = vld1q_dup_u32(subkeys+i);
+        y1 = veorq_u32(veorq_u32(y1, SIMON64_f(x1)), rk2);
     }
 
     x1 = Shuffle32(x1); y1 = Shuffle32(y1);
@@ -175,7 +190,7 @@ inline void SPECK64_Dec_Block(uint32x4_t &block0, uint32x4_t &block1,
     block1 = vzipq_u32(x1, y1).val[1];
 }
 
-inline void SPECK64_Enc_6_Blocks(uint32x4_t &block0, uint32x4_t &block1,
+inline void SIMON64_Enc_6_Blocks(uint32x4_t &block0, uint32x4_t &block1,
     uint32x4_t &block2, uint32x4_t &block3, uint32x4_t &block4, uint32x4_t &block5,
     const word32 *subkeys, unsigned int rounds)
 {
@@ -195,25 +210,27 @@ inline void SPECK64_Enc_6_Blocks(uint32x4_t &block0, uint32x4_t &block1,
     x2 = Shuffle32(x2); y2 = Shuffle32(y2);
     x3 = Shuffle32(x3); y3 = Shuffle32(y3);
 
-    for (size_t i=0; static_cast<int>(i)<rounds; ++i)
+    for (size_t i = 0; static_cast<int>(i) < (rounds & ~1) - 1; i += 2)
     {
-        const uint32x4_t rk = vdupq_n_u32(subkeys[i]);
+        const uint32x4_t rk1 = vld1q_dup_u32(subkeys+i);
+        y1 = veorq_u32(veorq_u32(y1, SIMON64_f(x1)), rk1);
+        y2 = veorq_u32(veorq_u32(y2, SIMON64_f(x2)), rk1);
+        y3 = veorq_u32(veorq_u32(y3, SIMON64_f(x3)), rk1);
 
-        x1 = RotateRight32<8>(x1);
-        x2 = RotateRight32<8>(x2);
-        x3 = RotateRight32<8>(x3);
-        x1 = vaddq_u32(x1, y1);
-        x2 = vaddq_u32(x2, y2);
-        x3 = vaddq_u32(x3, y3);
-        x1 = veorq_u32(x1, rk);
-        x2 = veorq_u32(x2, rk);
-        x3 = veorq_u32(x3, rk);
-        y1 = RotateLeft32<3>(y1);
-        y2 = RotateLeft32<3>(y2);
-        y3 = RotateLeft32<3>(y3);
-        y1 = veorq_u32(y1, x1);
-        y2 = veorq_u32(y2, x2);
-        y3 = veorq_u32(y3, x3);
+        const uint32x4_t rk2 = vld1q_dup_u32(subkeys+i+1);
+        x1 = veorq_u32(veorq_u32(x1, SIMON64_f(y1)), rk2);
+        x2 = veorq_u32(veorq_u32(x2, SIMON64_f(y2)), rk2);
+        x3 = veorq_u32(veorq_u32(x3, SIMON64_f(y3)), rk2);
+    }
+
+    if (rounds & 1)
+    {
+        const uint32x4_t rk = vld1q_dup_u32(subkeys + rounds - 1);
+
+        y1 = veorq_u32(veorq_u32(y1, SIMON64_f(x1)), rk);
+        y2 = veorq_u32(veorq_u32(y2, SIMON64_f(x2)), rk);
+        y3 = veorq_u32(veorq_u32(y3, SIMON64_f(x3)), rk);
+        std::swap(x1, y1); std::swap(x2, y2); std::swap(x3, y3);
     }
 
     x1 = Shuffle32(x1); y1 = Shuffle32(y1);
@@ -229,7 +246,7 @@ inline void SPECK64_Enc_6_Blocks(uint32x4_t &block0, uint32x4_t &block1,
     block5 = vzipq_u32(x3, y3).val[1];
 }
 
-inline void SPECK64_Dec_6_Blocks(uint32x4_t &block0, uint32x4_t &block1,
+inline void SIMON64_Dec_6_Blocks(uint32x4_t &block0, uint32x4_t &block1,
     uint32x4_t &block2, uint32x4_t &block3, uint32x4_t &block4, uint32x4_t &block5,
     const word32 *subkeys, unsigned int rounds)
 {
@@ -249,25 +266,28 @@ inline void SPECK64_Dec_6_Blocks(uint32x4_t &block0, uint32x4_t &block1,
     x2 = Shuffle32(x2); y2 = Shuffle32(y2);
     x3 = Shuffle32(x3); y3 = Shuffle32(y3);
 
-    for (size_t i=rounds-1; static_cast<int>(i)>=0; --i)
+    if (rounds & 1)
     {
-        const uint32x4_t rk = vdupq_n_u32(subkeys[i]);
+        std::swap(x1, y1); std::swap(x2, y2); std::swap(x3, y3);
+        const uint32x4_t rk = vld1q_dup_u32(subkeys + rounds - 1);
 
-        y1 = veorq_u32(y1, x1);
-        y2 = veorq_u32(y2, x2);
-        y3 = veorq_u32(y3, x3);
-        y1 = RotateRight32<3>(y1);
-        y2 = RotateRight32<3>(y2);
-        y3 = RotateRight32<3>(y3);
-        x1 = veorq_u32(x1, rk);
-        x2 = veorq_u32(x2, rk);
-        x3 = veorq_u32(x3, rk);
-        x1 = vsubq_u32(x1, y1);
-        x2 = vsubq_u32(x2, y2);
-        x3 = vsubq_u32(x3, y3);
-        x1 = RotateLeft32<8>(x1);
-        x2 = RotateLeft32<8>(x2);
-        x3 = RotateLeft32<8>(x3);
+        y1 = veorq_u32(veorq_u32(y1, rk), SIMON64_f(x1));
+        y2 = veorq_u32(veorq_u32(y2, rk), SIMON64_f(x2));
+        y3 = veorq_u32(veorq_u32(y3, rk), SIMON64_f(x3));
+        rounds--;
+    }
+
+    for (size_t i = rounds - 2; static_cast<int>(i) >= 0; i -= 2)
+    {
+        const uint32x4_t rk1 = vld1q_dup_u32(subkeys + i + 1);
+        x1 = veorq_u32(veorq_u32(x1, SIMON64_f(y1)), rk1);
+        x2 = veorq_u32(veorq_u32(x2, SIMON64_f(y2)), rk1);
+        x3 = veorq_u32(veorq_u32(x3, SIMON64_f(y3)), rk1);
+
+        const uint32x4_t rk2 = vld1q_dup_u32(subkeys + i);
+        y1 = veorq_u32(veorq_u32(y1, SIMON64_f(x1)), rk2);
+        y2 = veorq_u32(veorq_u32(y2, SIMON64_f(x2)), rk2);
+        y3 = veorq_u32(veorq_u32(y3, SIMON64_f(x3)), rk2);
     }
 
     x1 = Shuffle32(x1); y1 = Shuffle32(y1);
@@ -363,7 +383,13 @@ inline uint64x2_t Shuffle64(const uint64x2_t& val)
 #endif
 }
 
-inline void SPECK128_Enc_Block(uint64x2_t &block0, uint64x2_t &block1,
+inline uint64x2_t SIMON128_f(const uint64x2_t& val)
+{
+    return veorq_u64(RotateLeft64<2>(val),
+        vandq_u64(RotateLeft64<1>(val), RotateLeft64<8>(val)));
+}
+
+inline void SIMON128_Enc_Block(uint64x2_t &block0, uint64x2_t &block1,
     const word64 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read from
@@ -375,25 +401,30 @@ inline void SPECK128_Enc_Block(uint64x2_t &block0, uint64x2_t &block1,
 
     x1 = Shuffle64(x1); y1 = Shuffle64(y1);
 
-    for (size_t i=0; static_cast<int>(i)<rounds; ++i)
+    for (size_t i = 0; static_cast<int>(i) < (rounds & ~1)-1; i += 2)
     {
-        const uint64x2_t rk = vld1q_dup_u64(subkeys+i);
+        const uint64x2_t rk1 = vld1q_dup_u64(subkeys+i);
+        y1 = veorq_u64(veorq_u64(y1, SIMON128_f(x1)), rk1);
 
-        x1 = RotateRight64<8>(x1);
-        x1 = vaddq_u64(x1, y1);
-        x1 = veorq_u64(x1, rk);
-        y1 = RotateLeft64<3>(y1);
-        y1 = veorq_u64(y1, x1);
+        const uint64x2_t rk2 = vld1q_dup_u64(subkeys+i+1);
+        x1 = veorq_u64(veorq_u64(x1, SIMON128_f(y1)), rk2);
+    }
+
+    if (rounds & 1)
+    {
+        const uint64x2_t rk = vld1q_dup_u64(subkeys+rounds-1);
+
+        y1 = veorq_u64(veorq_u64(y1, SIMON128_f(x1)), rk);
+        std::swap(x1, y1);
     }
 
     x1 = Shuffle64(x1); y1 = Shuffle64(y1);
 
-    // [A1 B1][A2 B2] ... => [A1 A2][B1 B2] ...
     block0 = UnpackLow64(x1, y1);
     block1 = UnpackHigh64(x1, y1);
 }
 
-inline void SPECK128_Enc_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
+inline void SIMON128_Enc_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
     uint64x2_t &block2, uint64x2_t &block3, uint64x2_t &block4, uint64x2_t &block5,
     const word64 *subkeys, unsigned int rounds)
 {
@@ -412,32 +443,33 @@ inline void SPECK128_Enc_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
     x2 = Shuffle64(x2); y2 = Shuffle64(y2);
     x3 = Shuffle64(x3); y3 = Shuffle64(y3);
 
-    for (size_t i=0; static_cast<int>(i)<rounds; ++i)
+    for (size_t i = 0; static_cast<int>(i) < (rounds & ~1) - 1; i += 2)
     {
-        const uint64x2_t rk = vld1q_dup_u64(subkeys+i);
+        const uint64x2_t rk1 = vld1q_dup_u64(subkeys+i);
+        y1 = veorq_u64(veorq_u64(y1, SIMON128_f(x1)), rk1);
+        y2 = veorq_u64(veorq_u64(y2, SIMON128_f(x2)), rk1);
+        y3 = veorq_u64(veorq_u64(y3, SIMON128_f(x3)), rk1);
 
-        x1 = RotateRight64<8>(x1);
-        x2 = RotateRight64<8>(x2);
-        x3 = RotateRight64<8>(x3);
-        x1 = vaddq_u64(x1, y1);
-        x2 = vaddq_u64(x2, y2);
-        x3 = vaddq_u64(x3, y3);
-        x1 = veorq_u64(x1, rk);
-        x2 = veorq_u64(x2, rk);
-        x3 = veorq_u64(x3, rk);
-        y1 = RotateLeft64<3>(y1);
-        y2 = RotateLeft64<3>(y2);
-        y3 = RotateLeft64<3>(y3);
-        y1 = veorq_u64(y1, x1);
-        y2 = veorq_u64(y2, x2);
-        y3 = veorq_u64(y3, x3);
+        const uint64x2_t rk2 = vld1q_dup_u64(subkeys+i+1);
+        x1 = veorq_u64(veorq_u64(x1, SIMON128_f(y1)), rk2);
+        x2 = veorq_u64(veorq_u64(x2, SIMON128_f(y2)), rk2);
+        x3 = veorq_u64(veorq_u64(x3, SIMON128_f(y3)), rk2);
+    }
+
+    if (rounds & 1)
+    {
+        const uint64x2_t rk = vld1q_dup_u64(subkeys + rounds - 1);
+
+        y1 = veorq_u64(veorq_u64(y1, SIMON128_f(x1)), rk);
+        y2 = veorq_u64(veorq_u64(y2, SIMON128_f(x2)), rk);
+        y3 = veorq_u64(veorq_u64(y3, SIMON128_f(x3)), rk);
+        std::swap(x1, y1); std::swap(x2, y2); std::swap(x3, y3);
     }
 
     x1 = Shuffle64(x1); y1 = Shuffle64(y1);
     x2 = Shuffle64(x2); y2 = Shuffle64(y2);
     x3 = Shuffle64(x3); y3 = Shuffle64(y3);
 
-    // [A1 B1][A2 B2] ... => [A1 A2][B1 B2] ...
     block0 = UnpackLow64(x1, y1);
     block1 = UnpackHigh64(x1, y1);
     block2 = UnpackLow64(x2, y2);
@@ -446,7 +478,7 @@ inline void SPECK128_Enc_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
     block5 = UnpackHigh64(x3, y3);
 }
 
-inline void SPECK128_Dec_Block(uint64x2_t &block0, uint64x2_t &block1,
+inline void SIMON128_Dec_Block(uint64x2_t &block0, uint64x2_t &block1,
     const word64 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read from
@@ -458,25 +490,31 @@ inline void SPECK128_Dec_Block(uint64x2_t &block0, uint64x2_t &block1,
 
     x1 = Shuffle64(x1); y1 = Shuffle64(y1);
 
-    for (size_t i=rounds-1; static_cast<int>(i)>=0; --i)
+    if (rounds & 1)
     {
-        const uint64x2_t rk = vld1q_dup_u64(subkeys+i);
+        std::swap(x1, y1);
+        const uint64x2_t rk = vld1q_dup_u64(subkeys + rounds - 1);
 
-        y1 = veorq_u64(y1, x1);
-        y1 = RotateRight64<3>(y1);
-        x1 = veorq_u64(x1, rk);
-        x1 = vsubq_u64(x1, y1);
-        x1 = RotateLeft64<8>(x1);
+        y1 = veorq_u64(veorq_u64(y1, rk), SIMON128_f(x1));
+        rounds--;
+    }
+
+    for (size_t i = rounds-2; static_cast<int>(i) >= 0; i -= 2)
+    {
+        const uint64x2_t rk1 = vld1q_dup_u64(subkeys+i+1);
+        x1 = veorq_u64(veorq_u64(x1, SIMON128_f(y1)), rk1);
+
+        const uint64x2_t rk2 = vld1q_dup_u64(subkeys+i);
+        y1 = veorq_u64(veorq_u64(y1, SIMON128_f(x1)), rk2);
     }
 
     x1 = Shuffle64(x1); y1 = Shuffle64(y1);
 
-    // [A1 B1][A2 B2] ... => [A1 A2][B1 B2] ...
     block0 = UnpackLow64(x1, y1);
     block1 = UnpackHigh64(x1, y1);
 }
 
-inline void SPECK128_Dec_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
+inline void SIMON128_Dec_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
     uint64x2_t &block2, uint64x2_t &block3, uint64x2_t &block4, uint64x2_t &block5,
     const word64 *subkeys, unsigned int rounds)
 {
@@ -495,32 +533,34 @@ inline void SPECK128_Dec_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
     x2 = Shuffle64(x2); y2 = Shuffle64(y2);
     x3 = Shuffle64(x3); y3 = Shuffle64(y3);
 
-    for (size_t i=rounds-1; static_cast<int>(i)>=0; --i)
+    if (rounds & 1)
     {
-        const uint64x2_t rk = vld1q_dup_u64(subkeys+i);
+        std::swap(x1, y1); std::swap(x2, y2); std::swap(x3, y3);
+        const uint64x2_t rk = vld1q_dup_u64(subkeys + rounds - 1);
 
-        y1 = veorq_u64(y1, x1);
-        y2 = veorq_u64(y2, x2);
-        y3 = veorq_u64(y3, x3);
-        y1 = RotateRight64<3>(y1);
-        y2 = RotateRight64<3>(y2);
-        y3 = RotateRight64<3>(y3);
-        x1 = veorq_u64(x1, rk);
-        x2 = veorq_u64(x2, rk);
-        x3 = veorq_u64(x3, rk);
-        x1 = vsubq_u64(x1, y1);
-        x2 = vsubq_u64(x2, y2);
-        x3 = vsubq_u64(x3, y3);
-        x1 = RotateLeft64<8>(x1);
-        x2 = RotateLeft64<8>(x2);
-        x3 = RotateLeft64<8>(x3);
+        y1 = veorq_u64(veorq_u64(y1, rk), SIMON128_f(x1));
+        y2 = veorq_u64(veorq_u64(y2, rk), SIMON128_f(x2));
+        y3 = veorq_u64(veorq_u64(y3, rk), SIMON128_f(x3));
+        rounds--;
+    }
+
+    for (size_t i = rounds - 2; static_cast<int>(i) >= 0; i -= 2)
+    {
+        const uint64x2_t rk1 = vld1q_dup_u64(subkeys + i + 1);
+        x1 = veorq_u64(veorq_u64(x1, SIMON128_f(y1)), rk1);
+        x2 = veorq_u64(veorq_u64(x2, SIMON128_f(y2)), rk1);
+        x3 = veorq_u64(veorq_u64(x3, SIMON128_f(y3)), rk1);
+
+        const uint64x2_t rk2 = vld1q_dup_u64(subkeys + i);
+        y1 = veorq_u64(veorq_u64(y1, SIMON128_f(x1)), rk2);
+        y2 = veorq_u64(veorq_u64(y2, SIMON128_f(x2)), rk2);
+        y3 = veorq_u64(veorq_u64(y3, SIMON128_f(x3)), rk2);
     }
 
     x1 = Shuffle64(x1); y1 = Shuffle64(y1);
     x2 = Shuffle64(x2); y2 = Shuffle64(y2);
     x3 = Shuffle64(x3); y3 = Shuffle64(y3);
 
-    // [A1 B1][A2 B2] ... => [A1 A2][B1 B2] ...
     block0 = UnpackLow64(x1, y1);
     block1 = UnpackHigh64(x1, y1);
     block2 = UnpackLow64(x2, y2);
@@ -542,6 +582,17 @@ inline void SPECK128_Dec_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
 #ifndef CONST_M128_CAST
 # define CONST_M128_CAST(x) ((const __m128i *)(const void *)(x))
 #endif
+
+inline void Swap128(__m128i& a,__m128i& b)
+{
+#if defined(__SUNPRO_CC) && (__SUNPRO_CC <= 0x5120)
+    // __m128i is an unsigned long long[2], and support for swapping it was not added until C++11.
+    // SunCC 12.1 - 12.3 fail to consume the swap; while SunCC 12.4 consumes it without -std=c++11.
+    vec_swap(a, b);
+#else
+    std::swap(a, b);
+#endif
+}
 
 #if defined(CRYPTOPP_AVX512_ROTATE)
 template <unsigned int R>
@@ -585,11 +636,15 @@ inline __m128i RotateRight64<8>(const __m128i& val)
     const __m128i mask = _mm_set_epi8(8,15,14,13, 12,11,10,9, 0,7,6,5, 4,3,2,1);
     return _mm_shuffle_epi8(val, mask);
 }
-
 #endif  // CRYPTOPP_AVX512_ROTATE
 
-inline void SPECK128_Enc_Block(__m128i &block0, __m128i &block1,
-    const word64 *subkeys, unsigned int rounds)
+inline __m128i SIMON128_f(const __m128i& v)
+{
+    return _mm_xor_si128(RotateLeft64<2>(v),
+        _mm_and_si128(RotateLeft64<1>(v), RotateLeft64<8>(v)));
+}
+
+inline void SIMON128_Enc_Block(__m128i &block0, __m128i &block1, const word64 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read from
     // a big-endian byte array. Depending on the number of blocks it needs to
@@ -602,27 +657,34 @@ inline void SPECK128_Enc_Block(__m128i &block0, __m128i &block1,
     x1 = _mm_shuffle_epi8(x1, mask);
     y1 = _mm_shuffle_epi8(y1, mask);
 
-    for (size_t i=0; static_cast<int>(i)<rounds; ++i)
+    for (size_t i = 0; static_cast<int>(i) < (rounds & ~1)-1; i += 2)
+    {
+        const __m128i rk1 = _mm_castpd_si128(
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+i)));
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON128_f(x1)), rk1);
+
+        const __m128i rk2 = _mm_castpd_si128(
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+i+1)));
+        x1 = _mm_xor_si128(_mm_xor_si128(x1, SIMON128_f(y1)), rk2);
+    }
+
+    if (rounds & 1)
     {
         const __m128i rk = _mm_castpd_si128(
-            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+i)));
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+rounds-1)));
 
-        x1 = RotateRight64<8>(x1);
-        x1 = _mm_add_epi64(x1, y1);
-        x1 = _mm_xor_si128(x1, rk);
-        y1 = RotateLeft64<3>(y1);
-        y1 = _mm_xor_si128(y1, x1);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON128_f(x1)), rk);
+        Swap128(x1, y1);
     }
 
     x1 = _mm_shuffle_epi8(x1, mask);
     y1 = _mm_shuffle_epi8(y1, mask);
 
-    // [A1 B1][A2 B2] ... => [A1 A2][B1 B2] ...
     block0 = _mm_unpacklo_epi64(x1, y1);
     block1 = _mm_unpackhi_epi64(x1, y1);
 }
 
-inline void SPECK128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SIMON128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word64 *subkeys, unsigned int rounds)
 {
@@ -645,26 +707,29 @@ inline void SPECK128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     x3 = _mm_shuffle_epi8(x3, mask);
     y3 = _mm_shuffle_epi8(y3, mask);
 
-    for (size_t i=0; static_cast<int>(i)<rounds; ++i)
+    for (size_t i = 0; static_cast<int>(i) < (rounds & ~1) - 1; i += 2)
+    {
+        const __m128i rk1 = _mm_castpd_si128(
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys + i)));
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON128_f(x1)), rk1);
+        y2 = _mm_xor_si128(_mm_xor_si128(y2, SIMON128_f(x2)), rk1);
+        y3 = _mm_xor_si128(_mm_xor_si128(y3, SIMON128_f(x3)), rk1);
+
+        const __m128i rk2 = _mm_castpd_si128(
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys + i + 1)));
+        x1 = _mm_xor_si128(_mm_xor_si128(x1, SIMON128_f(y1)), rk2);
+        x2 = _mm_xor_si128(_mm_xor_si128(x2, SIMON128_f(y2)), rk2);
+        x3 = _mm_xor_si128(_mm_xor_si128(x3, SIMON128_f(y3)), rk2);
+    }
+
+    if (rounds & 1)
     {
         const __m128i rk = _mm_castpd_si128(
-            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+i)));
-
-        x1 = RotateRight64<8>(x1);
-        x2 = RotateRight64<8>(x2);
-        x3 = RotateRight64<8>(x3);
-        x1 = _mm_add_epi64(x1, y1);
-        x2 = _mm_add_epi64(x2, y2);
-        x3 = _mm_add_epi64(x3, y3);
-        x1 = _mm_xor_si128(x1, rk);
-        x2 = _mm_xor_si128(x2, rk);
-        x3 = _mm_xor_si128(x3, rk);
-        y1 = RotateLeft64<3>(y1);
-        y2 = RotateLeft64<3>(y2);
-        y3 = RotateLeft64<3>(y3);
-        y1 = _mm_xor_si128(y1, x1);
-        y2 = _mm_xor_si128(y2, x2);
-        y3 = _mm_xor_si128(y3, x3);
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys + rounds - 1)));
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON128_f(x1)), rk);
+        y2 = _mm_xor_si128(_mm_xor_si128(y2, SIMON128_f(x2)), rk);
+        y3 = _mm_xor_si128(_mm_xor_si128(y3, SIMON128_f(x3)), rk);
+        Swap128(x1, y1); Swap128(x2, y2); Swap128(x3, y3);
     }
 
     x1 = _mm_shuffle_epi8(x1, mask);
@@ -683,8 +748,7 @@ inline void SPECK128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     block5 = _mm_unpackhi_epi64(x3, y3);
 }
 
-inline void SPECK128_Dec_Block(__m128i &block0, __m128i &block1,
-    const word64 *subkeys, unsigned int rounds)
+inline void SIMON128_Dec_Block(__m128i &block0, __m128i &block1, const word64 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read from
     // a big-endian byte array. Depending on the number of blocks it needs to
@@ -697,27 +761,35 @@ inline void SPECK128_Dec_Block(__m128i &block0, __m128i &block1,
     x1 = _mm_shuffle_epi8(x1, mask);
     y1 = _mm_shuffle_epi8(y1, mask);
 
-    for (size_t i=rounds-1; static_cast<int>(i)>=0; --i)
+    if (rounds & 1)
     {
         const __m128i rk = _mm_castpd_si128(
-            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+i)));
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys + rounds - 1)));
 
-        y1 = _mm_xor_si128(y1, x1);
-        y1 = RotateRight64<3>(y1);
-        x1 = _mm_xor_si128(x1, rk);
-        x1 = _mm_sub_epi64(x1, y1);
-        x1 = RotateLeft64<8>(x1);
+        Swap128(x1, y1);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, rk), SIMON128_f(x1));
+        rounds--;
+    }
+
+    for (size_t i = rounds-2; static_cast<int>(i) >= 0; i -= 2)
+    {
+        const __m128i rk1 = _mm_castpd_si128(
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+i+1)));
+        x1 = _mm_xor_si128(_mm_xor_si128(x1, SIMON128_f(y1)), rk1);
+
+        const __m128i rk2 = _mm_castpd_si128(
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+i)));
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON128_f(x1)), rk2);
     }
 
     x1 = _mm_shuffle_epi8(x1, mask);
     y1 = _mm_shuffle_epi8(y1, mask);
 
-    // [A1 B1][A2 B2] ... => [A1 A2][B1 B2] ...
     block0 = _mm_unpacklo_epi64(x1, y1);
     block1 = _mm_unpackhi_epi64(x1, y1);
 }
 
-inline void SPECK128_Dec_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SIMON128_Dec_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word64 *subkeys, unsigned int rounds)
 {
@@ -740,26 +812,31 @@ inline void SPECK128_Dec_6_Blocks(__m128i &block0, __m128i &block1,
     x3 = _mm_shuffle_epi8(x3, mask);
     y3 = _mm_shuffle_epi8(y3, mask);
 
-    for (size_t i=rounds-1; static_cast<int>(i)>=0; --i)
+    if (rounds & 1)
     {
         const __m128i rk = _mm_castpd_si128(
-            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys+i)));
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys + rounds - 1)));
 
-        y1 = _mm_xor_si128(y1, x1);
-        y2 = _mm_xor_si128(y2, x2);
-        y3 = _mm_xor_si128(y3, x3);
-        y1 = RotateRight64<3>(y1);
-        y2 = RotateRight64<3>(y2);
-        y3 = RotateRight64<3>(y3);
-        x1 = _mm_xor_si128(x1, rk);
-        x2 = _mm_xor_si128(x2, rk);
-        x3 = _mm_xor_si128(x3, rk);
-        x1 = _mm_sub_epi64(x1, y1);
-        x2 = _mm_sub_epi64(x2, y2);
-        x3 = _mm_sub_epi64(x3, y3);
-        x1 = RotateLeft64<8>(x1);
-        x2 = RotateLeft64<8>(x2);
-        x3 = RotateLeft64<8>(x3);
+        Swap128(x1, y1); Swap128(x2, y2); Swap128(x3, y3);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, rk), SIMON128_f(x1));
+        y2 = _mm_xor_si128(_mm_xor_si128(y2, rk), SIMON128_f(x2));
+        y3 = _mm_xor_si128(_mm_xor_si128(y3, rk), SIMON128_f(x3));
+        rounds--;
+    }
+
+    for (size_t i = rounds - 2; static_cast<int>(i) >= 0; i -= 2)
+    {
+        const __m128i rk1 = _mm_castpd_si128(
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys + i + 1)));
+        x1 = _mm_xor_si128(_mm_xor_si128(x1, SIMON128_f(y1)), rk1);
+        x2 = _mm_xor_si128(_mm_xor_si128(x2, SIMON128_f(y2)), rk1);
+        x3 = _mm_xor_si128(_mm_xor_si128(x3, SIMON128_f(y3)), rk1);
+
+        const __m128i rk2 = _mm_castpd_si128(
+            _mm_loaddup_pd(reinterpret_cast<const double*>(subkeys + i)));
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON128_f(x1)), rk2);
+        y2 = _mm_xor_si128(_mm_xor_si128(y2, SIMON128_f(x2)), rk2);
+        y3 = _mm_xor_si128(_mm_xor_si128(y3, SIMON128_f(x3)), rk2);
     }
 
     x1 = _mm_shuffle_epi8(x1, mask);
@@ -812,7 +889,13 @@ inline __m128i RotateRight32<8>(const __m128i& val)
     return _mm_shuffle_epi8(val, mask);
 }
 
-inline void SPECK64_Enc_Block(__m128i &block0, __m128i &block1,
+inline __m128i SIMON64_f(const __m128i& v)
+{
+    return _mm_xor_si128(RotateLeft32<2>(v),
+        _mm_and_si128(RotateLeft32<1>(v), RotateLeft32<8>(v)));
+}
+
+inline void SIMON64_Enc_Block(__m128i &block0, __m128i &block1,
     const word32 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read from
@@ -829,15 +912,20 @@ inline void SPECK64_Enc_Block(__m128i &block0, __m128i &block1,
     x1 = _mm_shuffle_epi8(x1, mask);
     y1 = _mm_shuffle_epi8(y1, mask);
 
-    for (size_t i=0; static_cast<int>(i)<rounds; ++i)
+    for (size_t i = 0; static_cast<int>(i) < (rounds & ~1)-1; i += 2)
     {
-        const __m128i rk = _mm_set1_epi32(subkeys[i]);
+        const __m128i rk1 = _mm_set1_epi32(subkeys[i]);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON64_f(x1)), rk1);
 
-        x1 = RotateRight32<8>(x1);
-        x1 = _mm_add_epi32(x1, y1);
-        x1 = _mm_xor_si128(x1, rk);
-        y1 = RotateLeft32<3>(y1);
-        y1 = _mm_xor_si128(y1, x1);
+        const __m128i rk2 = _mm_set1_epi32(subkeys[i+1]);
+        x1 = _mm_xor_si128(_mm_xor_si128(x1, SIMON64_f(y1)), rk2);
+    }
+
+    if (rounds & 1)
+    {
+        const __m128i rk = _mm_set1_epi32(subkeys[rounds-1]);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON64_f(x1)), rk);
+        Swap128(x1, y1);
     }
 
     x1 = _mm_shuffle_epi8(x1, mask);
@@ -849,7 +937,7 @@ inline void SPECK64_Enc_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi32(x1, y1);
 }
 
-inline void SPECK64_Dec_Block(__m128i &block0, __m128i &block1,
+inline void SIMON64_Dec_Block(__m128i &block0, __m128i &block1,
     const word32 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read from
@@ -866,15 +954,21 @@ inline void SPECK64_Dec_Block(__m128i &block0, __m128i &block1,
     x1 = _mm_shuffle_epi8(x1, mask);
     y1 = _mm_shuffle_epi8(y1, mask);
 
-    for (size_t i=rounds-1; static_cast<int>(i)>=0; --i)
+    if (rounds & 1)
     {
-        const __m128i rk = _mm_set1_epi32(subkeys[i]);
+        Swap128(x1, y1);
+        const __m128i rk = _mm_set1_epi32(subkeys[rounds-1]);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, rk), SIMON64_f(x1));
+        rounds--;
+    }
 
-        y1 = _mm_xor_si128(y1, x1);
-        y1 = RotateRight32<3>(y1);
-        x1 = _mm_xor_si128(x1, rk);
-        x1 = _mm_sub_epi32(x1, y1);
-        x1 = RotateLeft32<8>(x1);
+    for (size_t i = rounds-2; static_cast<int>(i) >= 0; i -= 2)
+    {
+        const __m128i rk1 = _mm_set1_epi32(subkeys[i+1]);
+        x1 = _mm_xor_si128(_mm_xor_si128(x1, SIMON64_f(y1)), rk1);
+
+        const __m128i rk2 = _mm_set1_epi32(subkeys[i]);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON64_f(x1)), rk2);
     }
 
     x1 = _mm_shuffle_epi8(x1, mask);
@@ -886,7 +980,7 @@ inline void SPECK64_Dec_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi32(x1, y1);
 }
 
-inline void SPECK64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SIMON64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word32 *subkeys, unsigned int rounds)
 {
@@ -918,25 +1012,26 @@ inline void SPECK64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     x3 = _mm_shuffle_epi8(x3, mask);
     y3 = _mm_shuffle_epi8(y3, mask);
 
-    for (size_t i=0; static_cast<int>(i)<rounds; ++i)
+    for (size_t i = 0; static_cast<int>(i) < (rounds & ~1)-1; i += 2)
     {
-        const __m128i rk = _mm_set1_epi32(subkeys[i]);
+        const __m128i rk1 = _mm_set1_epi32(subkeys[i]);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON64_f(x1)), rk1);
+        y2 = _mm_xor_si128(_mm_xor_si128(y2, SIMON64_f(x2)), rk1);
+        y3 = _mm_xor_si128(_mm_xor_si128(y3, SIMON64_f(x3)), rk1);
 
-        x1 = RotateRight32<8>(x1);
-        x2 = RotateRight32<8>(x2);
-        x3 = RotateRight32<8>(x3);
-        x1 = _mm_add_epi32(x1, y1);
-        x2 = _mm_add_epi32(x2, y2);
-        x3 = _mm_add_epi32(x3, y3);
-        x1 = _mm_xor_si128(x1, rk);
-        x2 = _mm_xor_si128(x2, rk);
-        x3 = _mm_xor_si128(x3, rk);
-        y1 = RotateLeft32<3>(y1);
-        y2 = RotateLeft32<3>(y2);
-        y3 = RotateLeft32<3>(y3);
-        y1 = _mm_xor_si128(y1, x1);
-        y2 = _mm_xor_si128(y2, x2);
-        y3 = _mm_xor_si128(y3, x3);
+        const __m128i rk2 = _mm_set1_epi32(subkeys[i+1]);
+        x1 = _mm_xor_si128(_mm_xor_si128(x1, SIMON64_f(y1)), rk2);
+        x2 = _mm_xor_si128(_mm_xor_si128(x2, SIMON64_f(y2)), rk2);
+        x3 = _mm_xor_si128(_mm_xor_si128(x3, SIMON64_f(y3)), rk2);
+    }
+
+    if (rounds & 1)
+    {
+        const __m128i rk = _mm_set1_epi32(subkeys[rounds-1]);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON64_f(x1)), rk);
+        y2 = _mm_xor_si128(_mm_xor_si128(y2, SIMON64_f(x2)), rk);
+        y3 = _mm_xor_si128(_mm_xor_si128(y3, SIMON64_f(x3)), rk);
+        Swap128(x1, y1); Swap128(x2, y2); Swap128(x3, y3);
     }
 
     x1 = _mm_shuffle_epi8(x1, mask);
@@ -956,7 +1051,7 @@ inline void SPECK64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     block5 = _mm_unpackhi_epi32(x3, y3);
 }
 
-inline void SPECK64_Dec_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SIMON64_Dec_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word32 *subkeys, unsigned int rounds)
 {
@@ -988,25 +1083,27 @@ inline void SPECK64_Dec_6_Blocks(__m128i &block0, __m128i &block1,
     x3 = _mm_shuffle_epi8(x3, mask);
     y3 = _mm_shuffle_epi8(y3, mask);
 
-    for (size_t i=rounds-1; static_cast<int>(i)>=0; --i)
+    if (rounds & 1)
     {
-        const __m128i rk = _mm_set1_epi32(subkeys[i]);
+        Swap128(x1, y1); Swap128(x2, y2); Swap128(x3, y3);
+        const __m128i rk = _mm_set1_epi32(subkeys[rounds-1]);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, rk), SIMON64_f(x1));
+        y2 = _mm_xor_si128(_mm_xor_si128(y2, rk), SIMON64_f(x2));
+        y3 = _mm_xor_si128(_mm_xor_si128(y3, rk), SIMON64_f(x3));
+        rounds--;
+    }
 
-        y1 = _mm_xor_si128(y1, x1);
-        y2 = _mm_xor_si128(y2, x2);
-        y3 = _mm_xor_si128(y3, x3);
-        y1 = RotateRight32<3>(y1);
-        y2 = RotateRight32<3>(y2);
-        y3 = RotateRight32<3>(y3);
-        x1 = _mm_xor_si128(x1, rk);
-        x2 = _mm_xor_si128(x2, rk);
-        x3 = _mm_xor_si128(x3, rk);
-        x1 = _mm_sub_epi32(x1, y1);
-        x2 = _mm_sub_epi32(x2, y2);
-        x3 = _mm_sub_epi32(x3, y3);
-        x1 = RotateLeft32<8>(x1);
-        x2 = RotateLeft32<8>(x2);
-        x3 = RotateLeft32<8>(x3);
+    for (size_t i = rounds-2; static_cast<int>(i) >= 0; i -= 2)
+    {
+        const __m128i rk1 = _mm_set1_epi32(subkeys[i+1]);
+        x1 = _mm_xor_si128(_mm_xor_si128(x1, SIMON64_f(y1)), rk1);
+        x2 = _mm_xor_si128(_mm_xor_si128(x2, SIMON64_f(y2)), rk1);
+        x3 = _mm_xor_si128(_mm_xor_si128(x3, SIMON64_f(y3)), rk1);
+
+        const __m128i rk2 = _mm_set1_epi32(subkeys[i]);
+        y1 = _mm_xor_si128(_mm_xor_si128(y1, SIMON64_f(x1)), rk2);
+        y2 = _mm_xor_si128(_mm_xor_si128(y2, SIMON64_f(x2)), rk2);
+        y3 = _mm_xor_si128(_mm_xor_si128(y3, SIMON64_f(x3)), rk2);
     }
 
     x1 = _mm_shuffle_epi8(x1, mask);
@@ -1036,34 +1133,34 @@ NAMESPACE_BEGIN(CryptoPP)
 
 // *************************** ARM NEON **************************** //
 
-#if defined(CRYPTOPP_ARM_NEON_AVAILABLE)
-size_t SPECK64_Enc_AdvancedProcessBlocks_NEON(const word32* subKeys, size_t rounds,
+#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+size_t SIMON64_Enc_AdvancedProcessBlocks_NEON(const word32* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks64_NEON2x6(SPECK64_Enc_Block, SPECK64_Enc_6_Blocks,
+    return AdvancedProcessBlocks64_NEON2x6(SIMON64_Enc_Block, SIMON64_Enc_6_Blocks,
         subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 
-size_t SPECK64_Dec_AdvancedProcessBlocks_NEON(const word32* subKeys, size_t rounds,
+size_t SIMON64_Dec_AdvancedProcessBlocks_NEON(const word32* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks64_NEON2x6(SPECK64_Dec_Block, SPECK64_Dec_6_Blocks,
+    return AdvancedProcessBlocks64_NEON2x6(SIMON64_Dec_Block, SIMON64_Dec_6_Blocks,
         subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
-#endif
+#endif  // CRYPTOPP_ARM_NEON_AVAILABLE
 
 #if (CRYPTOPP_ARM_NEON_AVAILABLE)
-size_t SPECK128_Enc_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rounds,
+size_t SIMON128_Enc_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks128_NEON2x6(SPECK128_Enc_Block, SPECK128_Enc_6_Blocks,
+    return AdvancedProcessBlocks128_NEON2x6(SIMON128_Enc_Block, SIMON128_Enc_6_Blocks,
         subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 
-size_t SPECK128_Dec_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rounds,
+size_t SIMON128_Dec_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks128_NEON2x6(SPECK128_Dec_Block, SPECK128_Dec_6_Blocks,
+    return AdvancedProcessBlocks128_NEON2x6(SIMON128_Dec_Block, SIMON128_Dec_6_Blocks,
         subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 #endif  // CRYPTOPP_ARM_NEON_AVAILABLE
@@ -1071,33 +1168,33 @@ size_t SPECK128_Dec_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rou
 // ***************************** IA-32 ***************************** //
 
 #if defined(CRYPTOPP_SSE41_AVAILABLE)
-size_t SPECK64_Enc_AdvancedProcessBlocks_SSE41(const word32* subKeys, size_t rounds,
+size_t SIMON64_Enc_AdvancedProcessBlocks_SSE41(const word32* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks64_SSE2x6(SPECK64_Enc_Block, SPECK64_Enc_6_Blocks,
+    return AdvancedProcessBlocks64_SSE2x6(SIMON64_Enc_Block, SIMON64_Enc_6_Blocks,
         subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 
-size_t SPECK64_Dec_AdvancedProcessBlocks_SSE41(const word32* subKeys, size_t rounds,
+size_t SIMON64_Dec_AdvancedProcessBlocks_SSE41(const word32* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks64_SSE2x6(SPECK64_Dec_Block, SPECK64_Dec_6_Blocks,
+    return AdvancedProcessBlocks64_SSE2x6(SIMON64_Dec_Block, SIMON64_Dec_6_Blocks,
         subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 #endif
 
 #if defined(CRYPTOPP_SSSE3_AVAILABLE)
-size_t SPECK128_Enc_AdvancedProcessBlocks_SSSE3(const word64* subKeys, size_t rounds,
+size_t SIMON128_Enc_AdvancedProcessBlocks_SSSE3(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks128_SSE2x6(SPECK128_Enc_Block, SPECK128_Enc_6_Blocks,
+    return AdvancedProcessBlocks128_SSE2x6(SIMON128_Enc_Block, SIMON128_Enc_6_Blocks,
         subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 
-size_t SPECK128_Dec_AdvancedProcessBlocks_SSSE3(const word64* subKeys, size_t rounds,
+size_t SIMON128_Dec_AdvancedProcessBlocks_SSSE3(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks128_SSE2x6(SPECK128_Dec_Block, SPECK128_Dec_6_Blocks,
+    return AdvancedProcessBlocks128_SSE2x6(SIMON128_Dec_Block, SIMON128_Dec_6_Blocks,
         subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 #endif  // CRYPTOPP_SSSE3_AVAILABLE

@@ -452,6 +452,9 @@
     <ClCompile Include="zlib.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="simon-simd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Doxyfile">
@@ -472,6 +475,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="adler32.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="adv-simd.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="aes.h">

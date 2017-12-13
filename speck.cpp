@@ -7,16 +7,11 @@
 #include "misc.h"
 #include "cpu.h"
 
-// Uncomment for benchmarking C++ against SSE2 or NEON.
+// Uncomment for benchmarking C++ against SSE or NEON.
 // Do so in both speck.cpp and speck-simd.cpp.
 // #undef CRYPTOPP_SSSE3_AVAILABLE
+// #undef CRYPTOPP_SSE41_AVAILABLE
 // #undef CRYPTOPP_ARM_NEON_AVAILABLE
-
-// Disable NEON/ASIMD for Cortex-A53 and A57. The shifts are too slow and C/C++ is about
-// 3 cpb faster than NEON/ASIMD. Also see http://github.com/weidai11/cryptopp/issues/367.
-#if (defined(__aarch32__) || defined(__aarch64__)) && defined(CRYPTOPP_SLOW_ARMV8_SHIFT)
-# undef CRYPTOPP_ARM_NEON_AVAILABLE
-#endif
 
 ANONYMOUS_NAMESPACE_BEGIN
 
@@ -25,13 +20,13 @@ using CryptoPP::word64;
 using CryptoPP::rotlConstant;
 using CryptoPP::rotrConstant;
 
-//! \brief Forward round transformation
-//! \tparam W word type
-//! \details TF83() is the forward round transformation using a=8 and b=3 rotations.
-//!   The initial test implementation provided template parameters, but they were
-//!   removed because SPECK32 using a=7 and b=2 was not on the road map. The
-//!   additional template parameters also made calling SPECK_Encrypt and SPECK_Decrypt
-//!   kind of messy.
+/// \brief Forward round transformation
+/// \tparam W word type
+/// \details TF83() is the forward round transformation using a=8 and b=3 rotations.
+///   The initial test implementation provided template parameters, but they were
+///   removed because SPECK32 using a=7 and b=2 was not on the road map. The
+///   additional template parameters also made calling SPECK_Encrypt and SPECK_Decrypt
+///   kind of messy.
 template <class W>
 inline void TF83(W& x, W& y, const W k)
 {
@@ -41,13 +36,13 @@ inline void TF83(W& x, W& y, const W k)
     y ^= x;
 }
 
-//! \brief Reverse round transformation
-//! \tparam W word type
-//! \details TR83() is the reverse round transformation using a=8 and b=3 rotations.
-//!   The initial test implementation provided template parameters, but they were
-//!   removed because SPECK32 using a=7 and b=2 was not on the road map. The
-//!   additional template parameters also made calling SPECK_Encrypt and SPECK_Decrypt
-//!   kind of messy.
+/// \brief Reverse round transformation
+/// \tparam W word type
+/// \details TR83() is the reverse round transformation using a=8 and b=3 rotations.
+///   The initial test implementation provided template parameters, but they were
+///   removed because SPECK32 using a=7 and b=2 was not on the road map. The
+///   additional template parameters also made calling SPECK_Encrypt and SPECK_Decrypt
+///   kind of messy.
 template <class W>
 inline void TR83(W& x, W& y, const W k)
 {
@@ -57,12 +52,12 @@ inline void TR83(W& x, W& y, const W k)
     x = rotlConstant<8>(x);
 }
 
-//! \brief Forward transformation
-//! \tparam W word type
-//! \tparam R number of rounds
-//! \param c output array
-//! \param p input array
-//! \param k subkey array
+/// \brief Forward transformation
+/// \tparam W word type
+/// \tparam R number of rounds
+/// \param c output array
+/// \param p input array
+/// \param k subkey array
 template <class W, unsigned int R>
 inline void SPECK_Encrypt(W c[2], const W p[2], const W k[R])
 {
@@ -73,12 +68,12 @@ inline void SPECK_Encrypt(W c[2], const W p[2], const W k[R])
         TF83(c[0], c[1], k[i]);
 }
 
-//! \brief Reverse transformation
-//! \tparam W word type
-//! \tparam R number of rounds
-//! \param p output array
-//! \param c input array
-//! \param k subkey array
+/// \brief Reverse transformation
+/// \tparam W word type
+/// \tparam R number of rounds
+/// \param p output array
+/// \param c input array
+/// \param k subkey array
 template <class W, unsigned int R>
 inline void SPECK_Decrypt(W p[2], const W c[2], const W k[R])
 {
@@ -89,12 +84,12 @@ inline void SPECK_Decrypt(W p[2], const W c[2], const W k[R])
         TR83(p[0], p[1], k[i]);
 }
 
-//! \brief Subkey generation function
-//! \details Used when the user key consists of 2 words
-//! \tparam W word type
-//! \tparam R number of rounds
-//! \param key empty subkey array
-//! \param k user key array
+/// \brief Subkey generation function
+/// \details Used when the user key consists of 2 words
+/// \tparam W word type
+/// \tparam R number of rounds
+/// \param key empty subkey array
+/// \param k user key array
 template <class W, unsigned int R>
 inline void SPECK_ExpandKey_2W(W key[R], const W k[2])
 {
@@ -109,12 +104,12 @@ inline void SPECK_ExpandKey_2W(W key[R], const W k[2])
     key[R-1]=A;
 }
 
-//! \brief Subkey generation function
-//! \details Used when the user key consists of 3 words
-//! \tparam W word type
-//! \tparam R number of rounds
-//! \param key empty subkey array
-//! \param k user key array
+/// \brief Subkey generation function
+/// \details Used when the user key consists of 3 words
+/// \tparam W word type
+/// \tparam R number of rounds
+/// \param key empty subkey array
+/// \param k user key array
 template <class W, unsigned int R>
 inline void SPECK_ExpandKey_3W(W key[R], const W k[3])
 {
@@ -136,12 +131,12 @@ inline void SPECK_ExpandKey_3W(W key[R], const W k[3])
     }
 }
 
-//! \brief Subkey generation function
-//! \details Used when the user key consists of 4 words
-//! \tparam W word type
-//! \tparam R number of rounds
-//! \param key empty subkey array
-//! \param k user key array
+/// \brief Subkey generation function
+/// \details Used when the user key consists of 4 words
+/// \tparam W word type
+/// \tparam R number of rounds
+/// \param key empty subkey array
+/// \param k user key array
 template <class W, unsigned int R>
 inline void SPECK_ExpandKey_4W(W key[R], const W k[4])
 {
@@ -176,10 +171,24 @@ ANONYMOUS_NAMESPACE_END
 NAMESPACE_BEGIN(CryptoPP)
 
 #if defined(CRYPTOPP_ARM_NEON_AVAILABLE)
+extern size_t SPECK64_Enc_AdvancedProcessBlocks_NEON(const word32* subKeys, size_t rounds,
+    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
+
+extern size_t SPECK64_Dec_AdvancedProcessBlocks_NEON(const word32* subKeys, size_t rounds,
+    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
+
 extern size_t SPECK128_Enc_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 
 extern size_t SPECK128_Dec_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rounds,
+    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
+#endif
+
+#if defined(CRYPTOPP_SSE41_AVAILABLE)
+extern size_t SPECK64_Enc_AdvancedProcessBlocks_SSE41(const word32* subKeys, size_t rounds,
+    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
+
+extern size_t SPECK64_Dec_AdvancedProcessBlocks_SSE41(const word32* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 #endif
 
@@ -352,7 +361,41 @@ void SPECK128::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[2])(m_wspace[3]);
 }
 
-#if defined(CRYPTOPP_SPECK_ADVANCED_PROCESS_BLOCKS)
+#if defined(CRYPTOPP_SPECK64_ADVANCED_PROCESS_BLOCKS)
+size_t SPECK64::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks,
+        byte *outBlocks, size_t length, word32 flags) const
+{
+#if defined(CRYPTOPP_SSE41_AVAILABLE)
+    if (HasSSE41())
+        return SPECK64_Enc_AdvancedProcessBlocks_SSE41(m_rkeys, (size_t)m_rounds,
+            inBlocks, xorBlocks, outBlocks, length, flags);
+#endif
+#if defined(CRYPTOPP_ARM_NEON_AVAILABLE)
+    if (HasNEON())
+        return SPECK64_Enc_AdvancedProcessBlocks_NEON(m_rkeys, (size_t)m_rounds,
+            inBlocks, xorBlocks, outBlocks, length, flags);
+#endif
+    return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);
+}
+
+size_t SPECK64::Dec::AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks,
+        byte *outBlocks, size_t length, word32 flags) const
+{
+#if defined(CRYPTOPP_SSE41_AVAILABLE)
+    if (HasSSE41())
+        return SPECK64_Dec_AdvancedProcessBlocks_SSE41(m_rkeys, (size_t)m_rounds,
+            inBlocks, xorBlocks, outBlocks, length, flags);
+#endif
+#if defined(CRYPTOPP_ARM_NEON_AVAILABLE)
+    if (HasNEON())
+        return SPECK64_Dec_AdvancedProcessBlocks_NEON(m_rkeys, (size_t)m_rounds,
+            inBlocks, xorBlocks, outBlocks, length, flags);
+#endif
+    return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);
+}
+#endif  // CRYPTOPP_SPECK64_ADVANCED_PROCESS_BLOCKS
+
+#if defined(CRYPTOPP_SPECK128_ADVANCED_PROCESS_BLOCKS)
 size_t SPECK128::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks,
         byte *outBlocks, size_t length, word32 flags) const
 {
@@ -384,6 +427,6 @@ size_t SPECK128::Dec::AdvancedProcessBlocks(const byte *inBlocks, const byte *xo
 #endif
     return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);
 }
-#endif
+#endif  // CRYPTOPP_SPECK128_ADVANCED_PROCESS_BLOCKS
 
 NAMESPACE_END

@@ -1,6 +1,7 @@
 3way.cpp
 3way.h
 adhoc.cpp.proto
+adv-simd.h
 adler32.cpp
 adler32.h
 aes.h
@@ -205,7 +206,7 @@ poly1305.cpp
 poly1305.h
 polynomi.cpp
 polynomi.h
-ppc-crypto.h
+ppc-simd.h
 ppc-simd.cpp
 pssr.cpp
 pssr.h
@@ -274,6 +275,7 @@ simple.cpp
 simple.h
 siphash.h
 simon.cpp
+simon-simd.cpp
 simon.h
 skipjack.cpp
 skipjack.h
@@ -349,6 +351,7 @@ License.txt
 Readme.txt
 Install.txt
 Filelist.txt
+cryptopp.supp
 TestData/3desval.dat
 TestData/3wayval.dat
 TestData/aria.dat
