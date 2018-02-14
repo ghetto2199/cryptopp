@@ -136,6 +136,7 @@ gost.cpp
 gost.h
 gzip.cpp
 gzip.h
+hashfwd.h
 hex.cpp
 hex.h
 hkdf.h
@@ -182,6 +183,7 @@ mqueue.cpp
 mqueue.h
 mqv.cpp
 mqv.h
+naclite.h
 nbtheory.cpp
 nbtheory.h
 neon-simd.cpp
@@ -274,9 +276,6 @@ sharkbox.cpp
 simple.cpp
 simple.h
 siphash.h
-simon.cpp
-simon-simd.cpp
-simon.h
 skipjack.cpp
 skipjack.h
 sm3.cpp
@@ -288,9 +287,6 @@ socketft.cpp
 socketft.h
 sosemanuk.cpp
 sosemanuk.h
-speck.cpp
-speck-simd.cpp
-speck.h
 square.cpp
 square.h
 squaretb.cpp
@@ -313,12 +309,15 @@ trdlocal.h
 trunhash.h
 ttmac.cpp
 ttmac.h
+tweetnacl.cpp
+tweetnacl.h
 twofish.cpp
 twofish.h
 validat0.cpp
 validat1.cpp
 validat2.cpp
 validat3.cpp
+validat4.cpp
 validate.h
 vmac.cpp
 vmac.h
@@ -349,6 +348,7 @@ GNUmakefile
 GNUmakefile-cross
 License.txt
 Readme.txt
+History.txt
 Install.txt
 Filelist.txt
 cryptopp.supp
@@ -466,12 +466,10 @@ TestVectors/sha3_256_fips_202.txt
 TestVectors/sha3_384_fips_202.txt
 TestVectors/sha3_512_fips_202.txt
 TestVectors/shacal2.txt
-TestVectors/simon.txt
 TestVectors/siphash.txt
 TestVectors/sm3.txt
 TestVectors/sm4.txt
 TestVectors/sosemanuk.txt
-TestVectors/speck.txt
 TestVectors/tea.txt
 TestVectors/threefish.txt
 TestVectors/ttmac.txt

@@ -7,6 +7,7 @@
 ///   speedup calculations.
 /// \sa <A HREF="http://cr.yp.to/sigs/rwsota-20080131.pdf">RSA signatures and Rabin–Williams
 ///   signatures: the state of the art (20080131)</A>, Section 6, <em>The tweaks e and f</em>.
+/// \since Crypto++ 3.0
 
 #ifndef CRYPTOPP_RW_H
 #define CRYPTOPP_RW_H
@@ -17,9 +18,8 @@
 
 NAMESPACE_BEGIN(CryptoPP)
 
-/// \class RWFunction
 /// \brief Rabin-Williams trapdoor function using the public key
-/// \since Crypto++ 2.0, Tweaked roots using <em>e</em> and <em>f</em> since Crypto++ 5.6.4
+/// \since Crypto++ 3.0, Tweaked roots using <em>e</em> and <em>f</em> since Crypto++ 5.6.4
 class CRYPTOPP_DLL RWFunction : public TrapdoorFunction, public PublicKey
 {
 	typedef RWFunction ThisClass;
@@ -54,9 +54,8 @@ protected:
 	Integer m_n;
 };
 
-/// \class InvertibleRWFunction
 /// \brief Rabin-Williams trapdoor function using the private key
-/// \since Crypto++ 2.0, Tweaked roots using <em>e</em> and <em>f</em> since Crypto++ 5.6.4
+/// \since Crypto++ 3.0, Tweaked roots using <em>e</em> and <em>f</em> since Crypto++ 5.6.4
 class CRYPTOPP_DLL InvertibleRWFunction : public RWFunction, public TrapdoorFunctionInverse, public PrivateKey
 {
 	typedef InvertibleRWFunction ThisClass;
@@ -125,6 +124,7 @@ protected:
 };
 
 /// \brief Rabin-Williams keys
+/// \since Crypto++ 3.0
 struct RW
 {
 	CRYPTOPP_STATIC_CONSTEXPR const char* StaticAlgorithmName() {return "RW";}
@@ -135,6 +135,7 @@ struct RW
 /// \brief Rabin-Williams signature scheme
 /// \tparam STANDARD signature standard
 /// \tparam H hash transformation
+/// \since Crypto++ 3.0
 template <class STANDARD, class H>
 struct RWSS : public TF_SS<RW, STANDARD, H>
 {

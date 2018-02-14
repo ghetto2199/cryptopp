@@ -1,3 +1,8 @@
+// stdcpp.h - originally written and placed in the public domain by Wei Dai
+
+/// \file stdcpp.h
+/// \brief Common C++ header files
+
 #ifndef CRYPTOPP_STDCPP_H
 #define CRYPTOPP_STDCPP_H
 
@@ -60,6 +65,12 @@ namespace std {
 // workaround needed on Sun Studio 12u1 Sun C++ 5.10 SunOS_i386 128229-02 2009/09/21
 #ifdef CRYPTOPP_INCLUDE_VECTOR_CC
 # include <vector.cc>
+#endif
+
+// C++Builder's standard library (Dinkumware) do not have C's global log() function
+// https://github.com/weidai11/cryptopp/issues/520
+#ifdef __BORLANDC__
+using std::log;
 #endif
 
 #endif

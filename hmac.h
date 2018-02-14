@@ -11,9 +11,9 @@
 
 NAMESPACE_BEGIN(CryptoPP)
 
-/// \class HMAC_Base
 /// \brief HMAC information
 /// \details HMAC_Base derives from VariableKeyLength and MessageAuthenticationCode
+/// \since Crypto++ 2.1
 class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE HMAC_Base : public VariableKeyLength<16, 0, INT_MAX>, public MessageAuthenticationCode
 {
 public:
@@ -40,12 +40,12 @@ private:
 	bool m_innerHashKeyed;
 };
 
-/// \class HMAC
 /// \brief HMAC
 /// \tparam T HashTransformation derived class
 /// \details HMAC derives from MessageAuthenticationCodeImpl. It calculates the HMAC using
 ///   <tt>HMAC(K, text) = H(K XOR opad, H(K XOR ipad, text))</tt>.
 /// \sa <a href="http://www.weidai.com/scan-mirror/mac.html#HMAC">HMAC</a>
+/// \since Crypto++ 2.1
 template <class T>
 class HMAC : public MessageAuthenticationCodeImpl<HMAC_Base, HMAC<T> >
 {

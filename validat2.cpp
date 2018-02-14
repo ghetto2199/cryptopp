@@ -898,12 +898,13 @@ bool ValidateEC2N()
 {
 	std::cout << "\nEC2N validation suite running...\n\n";
 
+	// DEREncode() changed to Save() at Issue 569.
 	ECIES<EC2N>::Decryptor cpriv(GlobalRNG(), ASN1::sect193r1());
 	ECIES<EC2N>::Encryptor cpub(cpriv);
 	ByteQueue bq;
-	cpriv.DEREncode(bq);
+	cpriv.AccessMaterial().Save(bq);
 	cpub.AccessKey().AccessGroupParameters().SetEncodeAsOID(true);
-	cpub.DEREncode(bq);
+	cpub.AccessMaterial().Save(bq);
 	ECDSA<EC2N, SHA1>::Signer spriv(bq);
 	ECDSA<EC2N, SHA1>::Verifier spub(bq);
 	ECDH<EC2N>::Domain ecdhc(ASN1::sect193r1());
@@ -991,6 +992,26 @@ bool ValidateECDSA()
 	pass = pass && !fail;
 
 	pass = SignatureValidate(priv, pub) && pass;
+
+	return pass;
+}
+
+bool ValidateECDSA_RFC6979()
+{
+	std::cout << "\nRFC6979 deterministic ECDSA validation suite running...\n\n";
+
+	DL_Algorithm_ECDSA_RFC6979<ECP, SHA256> sign;
+
+	const Integer x("09A4D6792295A7F730FC3F2B49CBC0F62E862272Fh");
+	const Integer e("AF2BDBE1AA9B6EC1E2ADE1D694F41FC71A831D0268E9891562113D8A62ADD1BFh");
+	const Integer q("4000000000000000000020108A2E0CC0D99F8A5EFh");
+	const Integer k("23AF4074C90A02B3FE61D286D5C87F425E6BDD81Bh");
+	const Integer &k_out = sign.GenerateRandom(x, q, e);
+
+	bool pass  = (k_out == k);
+
+	std::cout << (pass ? "passed    " : "FAILED    ");
+	std::cout << "deterministic k generation against test vector\n";
 
 	return pass;
 }

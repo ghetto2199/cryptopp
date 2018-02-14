@@ -1,7 +1,6 @@
 // ec2n.h - originally written and placed in the public domain by Wei Dai
 
-/// \file
-/// \headerfile ec2n.h
+/// \file ec2n.h
 /// \brief Classes for Elliptic Curves over binary fields
 
 
@@ -24,7 +23,6 @@
 
 NAMESPACE_BEGIN(CryptoPP)
 
-/// \class EC2N
 /// \brief Elliptic Curve over GF(2^n)
 class CRYPTOPP_DLL EC2N : public AbstractGroup<EC2NPoint>, public EncodedPoint<EC2NPoint>
 {
@@ -97,12 +95,10 @@ private:
 CRYPTOPP_DLL_TEMPLATE_CLASS DL_FixedBasePrecomputationImpl<EC2N::Point>;
 CRYPTOPP_DLL_TEMPLATE_CLASS DL_GroupPrecomputation<EC2N::Point>;
 
-/// \class EcPrecomputation
 /// \brief Elliptic Curve precomputation
 /// \tparam EC elliptic curve field
 template <class EC> class EcPrecomputation;
 
-/// \class EcPrecomputation<EC2N>
 /// \brief EC2N precomputation specialization
 /// \details Implementation of <tt>DL_GroupPrecomputation<EC2N::Point></tt>
 /// \sa DL_GroupPrecomputation
@@ -118,8 +114,14 @@ public:
 	Element BERDecodeElement(BufferedTransformation &bt) const {return m_ec.BERDecodePoint(bt);}
 	void DEREncodeElement(BufferedTransformation &bt, const Element &v) const {m_ec.DEREncodePoint(bt, v, false);}
 
-	// non-inherited
+	/// \brief Set the elliptic curve
+	/// \param ec ECP derived class
+	/// \details SetCurve() is not inherited
 	void SetCurve(const EC2N &ec) {m_ec = ec;}
+
+	/// \brief Get the elliptic curve
+	/// \returns EC2N curve
+	/// \details GetCurve() is not inherited
 	const EC2N & GetCurve() const {return m_ec;}
 
 private:

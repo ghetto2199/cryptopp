@@ -2,14 +2,17 @@
 #####        System Attributes and Programs           #####
 ###########################################################
 
-# Must use Bash
-SHELL = bash
+# https://www.gnu.org/software/make/manual/make.html#Makefile-Conventions
+# and https://www.gnu.org/prep/standards/standards.html
+
+SHELL = /bin/sh
+
 # If needed
 TMPDIR ?= /tmp
 # Used for ARMv7 and NEON.
 FP_ABI ?= hard
 
-# Command ard arguments
+# Command and arguments
 AR ?= ar
 ARFLAGS ?= -cr # ar needs the dash on OpenBSD
 RANLIB ?= ranlib
@@ -18,10 +21,14 @@ CP ?= cp
 MV ?= mv
 RM ?= rm -f
 CHMOD ?= chmod
-MKDIR ?= mkdir
+MKDIR ?= mkdir -p
+
 LN ?= ln -sf
 LDCONF ?= /sbin/ldconfig -n
-UNAME := $(shell uname)
+
+INSTALL = install
+INSTALL_PROGRAM = $(INSTALL)
+INSTALL_DATA = $(INSTALL) -m 644
 
 # Solaris provides a non-Posix shell at /usr/bin
 ifneq ($(wildcard /usr/xpg4/bin),)
@@ -30,59 +37,60 @@ else
   GREP ?= grep
 endif
 
-IS_X86 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -v "64" | $(GREP) -i -c -E "i.86|x86|i86")
-IS_X64 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E "(_64|d64)")
-IS_PPC32 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -v "64" | $(GREP) -i -c -E "ppc|power")
-IS_PPC64 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E "ppc64|power64")
-IS_ARM32 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -v "64" | $(GREP) -i "arm" | $(GREP) -i -c -E 'armhf|arm7l|eabihf')
-IS_ARMV8 ?= $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E 'aarch32|aarch64')
-IS_NEON ?= $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E 'armv7|armhf|arm7l|eabihf|armv8|aarch32|aarch64')
-IS_SPARC := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c "sparc")
-IS_SPARC64 := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c "sparc64")
+# Attempt to determine host machine, fallback to "this" machine.
+#   The host machine is the one the package runs on. Most people
+#   call this the "target", but not Autotools.
+HOSTX := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | cut -f 1 -d '-')
+ifeq ($(HOSTX),)
+  HOSTX := $(shell uname -m 2>/dev/null)
+endif
 
-IS_AIX := $(shell uname -s | $(GREP) -i -c 'aix')
-IS_SUN := $(shell uname -s | $(GREP) -i -c "SunOS")
+IS_X86 := $(shell echo "$(HOSTX)" | $(GREP) -v "64" | $(GREP) -i -c -E 'i.86|x86|i86')
+IS_X64 := $(shell echo "$(HOSTX)" | $(GREP) -i -c -E '_64|d64')
+IS_PPC32 := $(shell echo "$(HOSTX)" | $(GREP) -v "64" | $(GREP) -i -c -E 'ppc|power')
+IS_PPC64 := $(shell echo "$(HOSTX)" | $(GREP) -i -c -E 'ppc64|power64')
+IS_ARM32 := $(shell echo "$(HOSTX)" | $(GREP) -i -c -E 'arm|armhf|arm7l|eabihf')
+IS_ARMV8 := $(shell echo "$(HOSTX)" | $(GREP) -i -c -E 'aarch32|aarch64')
+IS_SPARC32 := $(shell echo "$(HOSTX)" | $(GREP) -v "64" | $(GREP) -i -c 'sparc')
+IS_SPARC64 := $(shell echo "$(HOSTX)" | $(GREP) -i -c 'sparc64')
 
-IS_LINUX := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Linux")
-IS_MINGW := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "MinGW")
-IS_MINGW32 := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -x -c "mingw32")
-IS_CYGWIN := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Cygwin")
-IS_DARWIN := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "Darwin")
-IS_NETBSD := $(shell $(CXX) -dumpmachine 2>/dev/null | $(GREP) -i -c "NetBSD")
+IS_NEON := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null | $(GREP) -i -c -E 'armv7|armhf|arm7l|eabihf|armv8|aarch32|aarch64')
+
+SYSTEMX := $(shell $(CXX) $(CXXFLAGS) -dumpmachine 2>/dev/null)
+IS_LINUX := $(shell echo "$(SYSTEMX)" | $(GREP) -i -c "Linux")
+IS_MINGW := $(shell echo "$(SYSTEMX)" | $(GREP) -i -c "MinGW")
+IS_CYGWIN := $(shell echo "$(SYSTEMX)" | $(GREP) -i -c "Cygwin")
+IS_DARWIN := $(shell echo "$(SYSTEMX)" | $(GREP) -i -c "Darwin")
+IS_NETBSD := $(shell echo "$(SYSTEMX)" | $(GREP) -i -c "NetBSD")
+
+UNAMEX := $(shell uname -s 2>&1)
+IS_AIX := $(shell echo "$(UNAMEX)" | $(GREP) -i -c "aix")
+IS_SUN := $(shell echo "$(UNAMEX)" | $(GREP) -i -c "SunOS")
 
 SUN_COMPILER := $(shell $(CXX) -V 2>&1 | $(GREP) -i -c -E 'CC: (Sun|Studio)')
 GCC_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -v -E '(llvm|clang)' | $(GREP) -i -c -E '(gcc|g\+\+)')
-XLC_COMPILER := $(shell $(CXX) $(CXX) -qversion 2>/dev/null |$(GREP) -i -c "IBM XL")
+XLC_COMPILER := $(shell $(CXX) -qversion 2>/dev/null |$(GREP) -i -c "IBM XL")
 CLANG_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c -E '(llvm|clang)')
 INTEL_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c '\(icc\)')
 
 # Various Port compilers on OS X
 MACPORTS_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c "macports")
 HOMEBREW_COMPILER := $(shell $(CXX) --version 2>/dev/null | $(GREP) -i -c "homebrew")
-ifneq ($(MACPORTS_COMPILER)$(HOMEBREW_COMPILER),00)
-  OSXPORT_COMPILER := 1
+ifeq ($(IS_DARWIN),1)
+  ifneq ($(MACPORTS_COMPILER)$(HOMEBREW_COMPILER),00)
+    OSXPORT_COMPILER := 1
+  endif
 endif
 
 # Sun Studio 12.0 provides SunCC 0x0510; and Sun Studio 12.3 provides SunCC 0x0512
-SUNCC_510_OR_LATER := $(shell $(CXX) -V 2>&1 | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[0-9]|5\.[2-9]|6\.)")
-SUNCC_511_OR_LATER := $(shell $(CXX) -V 2>&1 | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[1-9]|5\.[2-9]|6\.)")
-SUNCC_512_OR_LATER := $(shell $(CXX) -V 2>&1 | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[2-9]|5\.[2-9]|6\.)")
-SUNCC_513_OR_LATER := $(shell $(CXX) -V 2>&1 | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[3-9]|5\.[2-9]|6\.)")
+SUNCC_VERSION := $(subst `,',$(shell $(CXX) -V 2>&1))
+SUNCC_510_OR_LATER := $(shell echo "$(SUNCC_VERSION)" | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[0-9]|5\.[2-9]|6\.)")
+SUNCC_511_OR_LATER := $(shell echo "$(SUNCC_VERSION)" | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[1-9]|5\.[2-9]|6\.)")
+SUNCC_512_OR_LATER := $(shell echo "$(SUNCC_VERSION)" | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[2-9]|5\.[2-9]|6\.)")
+SUNCC_513_OR_LATER := $(shell echo "$(SUNCC_VERSION)" | $(GREP) -i -c -E "CC: (Sun|Studio) .* (5\.1[3-9]|5\.[2-9]|6\.)")
 
 # Enable shared object versioning for Linux
 HAS_SOLIB_VERSION := $(IS_LINUX)
-
-# Set to 1 if you want to use X32 on X64
-IS_X32 ?= 0
-
-# Set to 1 if you used NASM to build rdrand-{x86|x32|x64}
-USE_NASM ?= 0
-
-# Fixup for X32
-ifeq ($(IS_X32),1)
-IS_X86 = 0
-IS_X64 = 0
-endif
 
 # Fixup SunOS
 ifeq ($(IS_SUN),1)
@@ -161,7 +169,7 @@ CLANG_INTEGRATED_ASSEMBLER ?= 0
 
 # original MinGW targets Win2k by default, but lacks proper Win2k support
 # if target Windows version is not specified, use Windows XP instead
-ifeq ($(IS_MINGW32),1)
+ifeq ($(IS_MINGW),1)
 ifeq ($(findstring -D_WIN32_WINNT,$(CXXFLAGS)),)
 ifeq ($(findstring -D_WIN32_WINDOWS,$(CXXFLAGS)),)
 ifeq ($(findstring -DWINVER,$(CXXFLAGS)),)
@@ -171,13 +179,13 @@ endif # NTDDI_VERSION
 endif # WINVER
 endif # _WIN32_WINDOWS
 endif # _WIN32_WINNT
-endif # IS_MINGW32
+endif # IS_MINGW
 
 ###########################################################
 #####               X86/X32/X64 Options               #####
 ###########################################################
 
-ifneq ($(IS_X86)$(IS_X32)$(IS_X64),000)
+ifneq ($(IS_X86)$(IS_X64),00)
 
 # Fixup. Clang reports an error rather than "LLVM assembler" or similar.
 ifneq ($(OSXPORT_COMPILER),1)
@@ -195,13 +203,13 @@ ifneq ($(HAVE_GAS),0)
   GAS217_OR_LATER := $(shell $(CXX) -xc -c /dev/null -Wa,-v -o/dev/null 2>&1 | $(GREP) -c -E "GNU assembler version (2\.1[7-9]|2\.[2-9]|[3-9])")
   GAS218_OR_LATER := $(shell $(CXX) -xc -c /dev/null -Wa,-v -o/dev/null 2>&1 | $(GREP) -c -E "GNU assembler version (2\.1[8-9]|2\.[2-9]|[3-9])")
   GAS219_OR_LATER := $(shell $(CXX) -xc -c /dev/null -Wa,-v -o/dev/null 2>&1 | $(GREP) -c -E "GNU assembler version (2\.19|2\.[2-9]|[3-9])")
-  GAS223_OR_LATER := $(shell $(CXX) -xc -c /dev/null -Wa,-v -o/dev/null 2>&1 | $(GREP) -c -E "GNU assembler version (2\.2[3-9]|2\.[3-9]|[3-9])")
+  GAS224_OR_LATER := $(shell $(CXX) -xc -c /dev/null -Wa,-v -o/dev/null 2>&1 | $(GREP) -c -E "GNU assembler version (2\.2[4-9]|2\.[3-9]|[3-9])")
 endif
 
 ICC111_OR_LATER := $(shell $(CXX) --version 2>&1 | $(GREP) -c -E "\(ICC\) ([2-9][0-9]|1[2-9]|11\.[1-9])")
 
 # Add -fPIC for targets *except* X86, X32, Cygwin or MinGW
-ifeq ($(IS_X86)$(IS_X32)$(IS_CYGWIN)$(IS_MINGW)$(SUN_COMPILER),00000)
+ifeq ($(IS_X86)$(IS_CYGWIN)$(IS_MINGW)$(SUN_COMPILER),0000)
  ifeq ($(findstring -fPIC,$(CXXFLAGS)),)
    CXXFLAGS += -fPIC
  endif
@@ -221,7 +229,7 @@ else
 ifeq ($(HAVE_GAS)$(GAS219_OR_LATER),10)
 CXXFLAGS += -DCRYPTOPP_DISABLE_AESNI
 else
-ifeq ($(HAVE_GAS)$(GAS223_OR_LATER),10)
+ifeq ($(HAVE_GAS)$(GAS224_OR_LATER),10)
 CXXFLAGS += -DCRYPTOPP_DISABLE_SHA
 
 endif  # -DCRYPTOPP_DISABLE_SHA
@@ -242,15 +250,11 @@ ifeq ($(findstring -DCRYPTOPP_DISABLE_SSSE3,$(CXXFLAGS)),)
   ifeq ($(HAVE_SSSE3),1)
     ARIA_FLAG = -mssse3
     SSSE3_FLAG = -mssse3
-    SIMON_FLAG = -mssse3
-    SPECK_FLAG = -mssse3
   endif
 ifeq ($(findstring -DCRYPTOPP_DISABLE_SSE4,$(CXXFLAGS)),)
   HAVE_SSE4 = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -msse4.1 -dM -E - 2>/dev/null | $(GREP) -i -c __SSE4_1__)
   ifeq ($(HAVE_SSE4),1)
     BLAKE2_FLAG = -msse4.1
-    SIMON_FLAG = -msse4.1
-    SPECK_FLAG = -msse4.1
   endif
   HAVE_SSE4 = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -msse4.2 -dM -E - 2>/dev/null | $(GREP) -i -c __SSE4_2__)
   ifeq ($(HAVE_SSE4),1)
@@ -281,15 +285,11 @@ ifeq ($(SUN_COMPILER),1)
   ifeq ($(COUNT),0)
     SSSE3_FLAG = -xarch=ssse3 -D__SSSE3__=1
     ARIA_FLAG = -xarch=ssse3 -D__SSSE3__=1
-    SIMON_FLAG = -xarch=ssse3 -D__SSSE3__=1
-    SPECK_FLAG = -xarch=ssse3 -D__SSSE3__=1
     LDFLAGS += -xarch=ssse3
   endif
   COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=sse4_1 -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal")
   ifeq ($(COUNT),0)
     BLAKE2_FLAG = -xarch=sse4_1 -D__SSE4_1__=1
-    SIMON_FLAG = -xarch=sse4_1 -D__SSE4_1__=1
-    SPECK_FLAG = -xarch=sse4_1 -D__SSE4_1__=1
     LDFLAGS += -xarch=sse4_1
   endif
   COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=sse4_2 -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal")
@@ -366,8 +366,6 @@ ifeq ($(IS_NEON),1)
     GCM_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
     ARIA_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
     BLAKE2_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
-    SIMON_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
-    SPECK_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
   endif
 endif
 
@@ -377,8 +375,6 @@ ifeq ($(IS_ARMV8),1)
     ARIA_FLAG = -march=armv8-a
     BLAKE2_FLAG = -march=armv8-a
     NEON_FLAG = -march=armv8-a
-    SIMON_FLAG = -march=armv8-a
-    SPECK_FLAG = -march=armv8-a
   endif
   HAVE_CRC = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -march=armv8-a+crc -dM -E - 2>/dev/null | $(GREP) -i -c __ARM_FEATURE_CRC32)
   ifeq ($(HAVE_CRC),1)
@@ -401,8 +397,6 @@ ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
     ALTIVEC_FLAG = -mcpu=power4 -maltivec
     ARIA_FLAG = -mcpu=power4 -maltivec
     BLAKE2_FLAG = -mcpu=power4 -maltivec
-    SIMON_FLAG = -mcpu=power4 -maltivec
-    SPECK_FLAG = -mcpu=power4 -maltivec
   endif
   # GCC and some compatibles
   HAVE_CRYPTO = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -mcpu=power8 -maltivec -dM -E - 2>/dev/null | $(GREP) -i -c -E '_ARCH_PWR8|_ARCH_PWR9|__CRYPTO')
@@ -416,8 +410,8 @@ ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
   HAVE_ALTIVEC = $(shell $(CXX) $(CXXFLAGS) -qshowmacros -qarch=pwr7 -qaltivec -E adhoc.cpp.proto 2>/dev/null | $(GREP) -i -c '__ALTIVEC__')
   ifneq ($(HAVE_ALTIVEC),0)
     ALTIVEC_FLAG = -qarch=pwr7 -qaltivec
-    SIMON_FLAG = -qarch=pwr4 -qaltivec
-    SPECK_FLAG = -qarch=pwr4 -qaltivec
+    ARIA_FLAG = -qarch=pwr7 -qaltivec
+    BLAKE2_FLAG = -qarch=pwr7 -qaltivec
   endif
   # IBM XL C/C++
   HAVE_CRYPTO = $(shell $(CXX) $(CXXFLAGS) -qshowmacros -qarch=pwr8 -qaltivec -E adhoc.cpp.proto 2>/dev/null | $(GREP) -i -c -E '_ARCH_PWR8|_ARCH_PWR9|__CRYPTO')
@@ -426,6 +420,8 @@ ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
     AES_FLAG = -qarch=pwr8 -qaltivec
     GCM_FLAG = -qarch=pwr8 -qaltivec
     SHA_FLAG = -qarch=pwr8 -qaltivec
+    ARIA_FLAG = -qarch=pwr8 -qaltivec
+    BLAKE2_FLAG = -qarch=pwr8 -qaltivec
   endif
 endif
 
@@ -473,7 +469,7 @@ endif
 # to contain additional bits (like SSE4 and AES on old Xeon)
 # http://www.oracle.com/technetwork/server-storage/solaris/hwcap-modification-139536.html
 ifeq ($(IS_SUN)$(SUN_COMPILER),11)
-  ifneq ($(IS_X86)$(IS_X32)$(IS_X64),000)
+  ifneq ($(IS_X86)$(IS_X64),00)
     ifeq ($(findstring -DCRYPTOPP_DISABLE_ASM,$(CXXFLAGS)),)
       LDFLAGS += -M cryptopp.mapfile
     endif  # No CRYPTOPP_DISABLE_ASM
@@ -518,7 +514,7 @@ endif
 # Add to all Solaris
 CXXFLAGS += -template=no%extdef
 # http://github.com/weidai11/cryptopp/issues/403
-ifneq ($(IS_SPARC)$(IS_SPARC64),00)
+ifneq ($(IS_SPARC32)$(IS_SPARC64),00)
 CXXFLAGS += -xmemalign=4i
 endif
 SUN_CC10_BUGGY := $(shell $(CXX) -V 2>&1 | $(GREP) -c -E "CC: Sun .* 5\.10 .* (2009|2010/0[1-4])")
@@ -582,7 +578,8 @@ endif # Asan
 # LD gold linker testing. Triggered by 'LD=ld.gold'.
 ifeq ($(findstring ld.gold,$(LD)),ld.gold)
   ifeq ($(findstring -fuse-ld=gold,$(CXXFLAGS)),)
-    ELF_FORMAT := $(shell file `which ld.gold` 2>&1 | cut -d":" -f 2 | $(GREP) -i -c "elf")
+    LD_GOLD = $(shell command -v ld.gold)
+    ELF_FORMAT := $(shell file $(LD_GOLD) 2>&1 | cut -d":" -f 2 | $(GREP) -i -c "elf")
     ifneq ($(ELF_FORMAT),0)
       LDFLAGS += -fuse-ld=gold
     endif # ELF/ELF64
@@ -693,18 +690,8 @@ endif
 # List cryptlib.cpp first, then cpu.cpp, then integer.cpp to tame C++ static initialization problems.
 OBJS := $(SRCS:.cpp=.o)
 
-ifeq ($(USE_NASM),1)
-ifeq ($(IS_X64),1)
-OBJS += rdrand-x64.o
-else ifeq ($(IS_X32),1)
-OBJS += rdrand-x32.o
-else ifeq ($(IS_X86),1)
-OBJS += rdrand-x86.o
-endif
-endif # Nasm
-
 # List test.cpp first to tame C++ static initialization problems.
-TESTSRCS := adhoc.cpp test.cpp bench1.cpp bench2.cpp validat0.cpp validat1.cpp validat2.cpp validat3.cpp datatest.cpp regtest1.cpp regtest2.cpp regtest3.cpp dlltest.cpp fipsalgt.cpp
+TESTSRCS := adhoc.cpp test.cpp bench1.cpp bench2.cpp validat0.cpp validat1.cpp validat2.cpp validat3.cpp validat4.cpp datatest.cpp regtest1.cpp regtest2.cpp regtest3.cpp dlltest.cpp fipsalgt.cpp
 TESTINCL := bench.h factory.h validate.h
 # Test objects
 TESTOBJS := $(TESTSRCS:.cpp=.o)
@@ -724,8 +711,12 @@ DLLTESTOBJS := dlltest.dllonly.o
 #####                Targets and Recipes              #####
 ###########################################################
 
+# Default builds program with static library only
+.PHONY: default
+default: cryptest.exe
+
 .PHONY: all
-all: cryptest.exe
+all: static dynamic cryptest.exe
 
 ifneq ($(IS_DARWIN),0)
 static: libcryptopp.a
@@ -741,7 +732,7 @@ dep deps depend GNUmakefile.deps:
 
 # CXXFLAGS are tuned earlier.
 .PHONY: native no-asm asan ubsan
-native no-asm asan ubsan: libcryptopp.a cryptest.exe
+native no-asm asan ubsan: cryptest.exe
 
 # CXXFLAGS are tuned earlier. Applications must use linker flags
 #  -Wl,--gc-sections (Linux and Unix) or -Wl,-dead_strip (OS X)
@@ -750,7 +741,7 @@ lean: static dynamic cryptest.exe
 
 # May want to export CXXFLAGS="-g3 -O1"
 .PHONY: lcov coverage
-lcov coverage: libcryptopp.a cryptest.exe
+lcov coverage: cryptest.exe
 	@-$(RM) -r ./TestCoverage/
 	lcov --base-directory . --directory . --zerocounters -q
 	./cryptest.exe v
@@ -761,7 +752,7 @@ lcov coverage: libcryptopp.a cryptest.exe
 
 # Travis CI and CodeCov rule
 .PHONY: gcov codecov
-gcov codecov: libcryptopp.a cryptest.exe
+gcov codecov: cryptest.exe
 	@-$(RM) -r ./TestCoverage/
 	./cryptest.exe v
 	./cryptest.exe tv all
@@ -769,7 +760,7 @@ gcov codecov: libcryptopp.a cryptest.exe
 
 # Should use CXXFLAGS="-g3 -O1"
 .PHONY: valgrind
-valgrind: libcryptopp.a cryptest.exe
+valgrind: cryptest.exe
 	valgrind --track-origins=yes --suppressions=cryptopp.supp ./cryptest.exe v
 
 .PHONY: test check
@@ -823,7 +814,7 @@ clean:
 .PHONY: distclean
 distclean: clean
 	-$(RM) adhoc.cpp adhoc.cpp.copied GNUmakefile.deps benchmarks.html cryptest.txt cryptest-*.txt
-	@-$(RM) cryptopp.tgz *.o *.bc *.ii *~
+	@-$(RM) libcryptopp.pc cryptopp.tgz *.o *.bc *.ii *~
 	@-$(RM) -r $(SRCS:.cpp=.obj) cryptlib.lib cryptest.exe *.suo *.sdf *.pdb Win32/ x64/ ipch/
 	@-$(RM) -r $(DOCUMENT_DIRECTORY)/
 	@-$(RM) -f configure.ac configure configure.in Makefile.am Makefile.in Makefile
@@ -834,44 +825,40 @@ distclean: clean
 	@-$(RM) cryptopp$(LIB_VER)\.*
 	@-$(RM) CryptoPPRef.zip
 
+# Some users already have a libcryptopp.pc. We install it if the file
+# is present. If you want one, then issue 'make libcryptopp.pc'.
 .PHONY: install
 install:
-	@-$(MKDIR) -p $(DESTDIR)$(INCLUDEDIR)/cryptopp
-	$(CP) *.h $(DESTDIR)$(INCLUDEDIR)/cryptopp
-	-$(CHMOD) 0755 $(DESTDIR)$(INCLUDEDIR)/cryptopp
-	-$(CHMOD) 0644 $(DESTDIR)$(INCLUDEDIR)/cryptopp/*.h
+	@-$(MKDIR) $(DESTDIR)$(INCLUDEDIR)/cryptopp
+	$(INSTALL_DATA) *.h $(DESTDIR)$(INCLUDEDIR)/cryptopp
 ifneq ($(wildcard libcryptopp.a),)
-	@-$(MKDIR) -p $(DESTDIR)$(LIBDIR)
-	$(CP) libcryptopp.a $(DESTDIR)$(LIBDIR)
-	-$(CHMOD) 0644 $(DESTDIR)$(LIBDIR)/libcryptopp.a
+	@-$(MKDIR) $(DESTDIR)$(LIBDIR)
+	$(INSTALL_DATA) libcryptopp.a $(DESTDIR)$(LIBDIR)
 endif
 ifneq ($(wildcard cryptest.exe),)
-	@-$(MKDIR) -p $(DESTDIR)$(BINDIR)
-	$(CP) cryptest.exe $(DESTDIR)$(BINDIR)
-	-$(CHMOD) 0755 $(DESTDIR)$(BINDIR)/cryptest.exe
-	$(MKDIR) -p $(DESTDIR)$(DATADIR)/cryptopp
-	$(CP) -r TestData $(DESTDIR)$(DATADIR)/cryptopp
-	$(CP) -r TestVectors $(DESTDIR)$(DATADIR)/cryptopp
-	-$(CHMOD) 0755 $(DESTDIR)$(DATADIR)/cryptopp
-	-$(CHMOD) 0755 $(DESTDIR)$(DATADIR)/cryptopp/TestData
-	-$(CHMOD) 0755 $(DESTDIR)$(DATADIR)/cryptopp/TestVectors
-	-$(CHMOD) 0644 $(DESTDIR)$(DATADIR)/cryptopp/TestData/*.dat
-	-$(CHMOD) 0644 $(DESTDIR)$(DATADIR)/cryptopp/TestVectors/*.txt
+	@-$(MKDIR) $(DESTDIR)$(BINDIR)
+	$(INSTALL_PROGRAM) cryptest.exe $(DESTDIR)$(BINDIR)
+	@-$(MKDIR) $(DESTDIR)$(DATADIR)/cryptopp/TestData
+	@-$(MKDIR) $(DESTDIR)$(DATADIR)/cryptopp/TestVectors
+	$(INSTALL_DATA) TestData/*.dat $(DESTDIR)$(DATADIR)/cryptopp/TestData
+	$(INSTALL_DATA) TestVectors/*.txt $(DESTDIR)$(DATADIR)/cryptopp/TestVectors
 endif
 ifneq ($(wildcard libcryptopp.dylib),)
-	@-$(MKDIR) -p $(DESTDIR)$(LIBDIR)
-	$(CP) libcryptopp.dylib $(DESTDIR)$(LIBDIR)
+	@-$(MKDIR) $(DESTDIR)$(LIBDIR)
+	$(INSTALL_PROGRAM) libcryptopp.dylib $(DESTDIR)$(LIBDIR)
 	-install_name_tool -id $(DESTDIR)$(LIBDIR)/libcryptopp.dylib $(DESTDIR)$(LIBDIR)/libcryptopp.dylib
-	-$(CHMOD) 0755 $(DESTDIR)$(LIBDIR)/libcryptopp.dylib
 endif
 ifneq ($(wildcard libcryptopp.so$(SOLIB_VERSION_SUFFIX)),)
-	@-$(MKDIR) -p $(DESTDIR)$(LIBDIR)
-	$(CP) libcryptopp.so$(SOLIB_VERSION_SUFFIX) $(DESTDIR)$(LIBDIR)
-	@-$(CHMOD) 0755 $(DESTDIR)$(LIBDIR)/libcryptopp.so$(SOLIB_VERSION_SUFFIX)
+	@-$(MKDIR) $(DESTDIR)$(LIBDIR)
+	$(INSTALL_PROGRAM) libcryptopp.so$(SOLIB_VERSION_SUFFIX) $(DESTDIR)$(LIBDIR)
 ifeq ($(HAS_SOLIB_VERSION),1)
-	-$(LN) -sf libcryptopp.so$(SOLIB_VERSION_SUFFIX) $(DESTDIR)$(LIBDIR)/libcryptopp.so
+	-$(LN) libcryptopp.so$(SOLIB_VERSION_SUFFIX) $(DESTDIR)$(LIBDIR)/libcryptopp.so
 	$(LDCONF) $(DESTDIR)$(LIBDIR)
 endif
+endif
+ifneq ($(wildcard libcryptopp.pc),)
+	@-$(MKDIR) $(DESTDIR)$(LIBDIR)/pkgconfig
+	$(INSTALL_DATA) libcryptopp.pc $(DESTDIR)$(LIBDIR)/pkgconfig/libcryptopp.pc
 endif
 
 .PHONY: remove uninstall
@@ -883,6 +870,7 @@ remove uninstall:
 	@-$(RM) $(DESTDIR)$(LIBDIR)/libcryptopp.so$(SOLIB_VERSION_SUFFIX)
 	@-$(RM) $(DESTDIR)$(LIBDIR)/libcryptopp.so$(SOLIB_COMPAT_SUFFIX)
 	@-$(RM) $(DESTDIR)$(LIBDIR)/libcryptopp.so
+	@-$(RM) $(DESTDIR)$(LIBDIR)/pkgconfig/libcryptopp.pc
 	@-$(RM) -r $(DESTDIR)$(DATADIR)/cryptopp
 
 libcryptopp.a: $(LIBOBJS)
@@ -900,7 +888,7 @@ libcryptopp.so$(SOLIB_VERSION_SUFFIX): $(LIBOBJS)
 ifeq ($(XLC_COMPILER),1)
 	$(CXX) -qmkshrobj $(SOLIB_FLAGS) -o $@ $(strip $(CXXFLAGS)) $(LDFLAGS) $(LIBOBJS) $(LDLIBS)
 else
-	$(CXX) -shared $(SOLIB_FLAGS) -o $@ $(strip $(CXXFLAGS)) $(PIC_FLAG) $(LDFLAGS) $(LIBOBJS) $(LDLIBS)
+	$(CXX) -shared $(SOLIB_FLAGS) -o $@ $(strip $(CXXFLAGS)) $(LDFLAGS) $(LIBOBJS) $(LDLIBS)
 endif
 ifeq ($(HAS_SOLIB_VERSION),1)
 	-$(LN) libcryptopp.so$(SOLIB_VERSION_SUFFIX) libcryptopp.so
@@ -934,6 +922,24 @@ cryptest.import.exe: cryptopp.dll libcryptopp.import.a $(TESTIMPORTOBJS)
 dlltest.exe: cryptopp.dll $(DLLTESTOBJS)
 	$(CXX) -o $@ $(strip $(CXXFLAGS)) $(DLLTESTOBJS) -L. -lcryptopp.dll $(LDFLAGS) $(LDLIBS)
 
+# Some users already have a libcryptopp.pc. We install it if the file
+# is present. If you want one, then issue 'make libcryptopp.pc'. Be sure
+# to use/verify PREFIX and LIBDIR below after writing the file.
+libcryptopp.pc:
+	@echo '# Crypto++ package configuration file' > libcryptopp.pc
+	@echo '' >> libcryptopp.pc
+	@echo 'prefix=$(PREFIX)' >> libcryptopp.pc
+	@echo 'libdir=$(LIBDIR)' >> libcryptopp.pc
+	@echo 'includedir=$${prefix}/include' >> libcryptopp.pc
+	@echo '' >> libcryptopp.pc
+	@echo 'Name: Crypto++' >> libcryptopp.pc
+	@echo 'Description: Crypto++ cryptographic library' >> libcryptopp.pc
+	@echo 'Version: 6.1.0' >> libcryptopp.pc
+	@echo 'URL: https://cryptopp.com/' >> libcryptopp.pc
+	@echo '' >> libcryptopp.pc
+	@echo 'Cflags: -I$${includedir}' >> libcryptopp.pc
+	@echo 'Libs: -L$${libdir} -lcryptopp' >> libcryptopp.pc
+
 # This recipe prepares the distro files
 TEXT_FILES := *.h *.cpp adhoc.cpp.proto License.txt Readme.txt Install.txt Filelist.txt Doxyfile cryptest* cryptlib* dlltest* cryptdll* *.sln *.vcxproj *.filters cryptopp.rc TestVectors/*.txt TestData/*.dat TestScripts/*.sh TestScripts/*.cmd
 EXEC_FILES := GNUmakefile GNUmakefile-cross TestData/ TestVectors/ TestScripts/
@@ -961,7 +967,7 @@ convert:
 	@-$(CHMOD) 0700 $(EXEC_FILES) *.sh *.cmd TestScripts/*.sh TestScripts/*.cmd
 	@-$(CHMOD) 0700 *.cmd *.sh GNUmakefile GNUmakefile-cross TestScripts/*.sh
 	-unix2dos --keepdate --quiet $(TEXT_FILES) .*.yml *.asm *.cmd TestScripts/*.*
-	-dos2unix --keepdate --quiet GNUmakefile GNUmakefile-cross *.supp *.s *.sh *.mapfile TestScripts/*.sh
+	-dos2unix --keepdate --quiet GNUmakefile GNUmakefile-cross *.supp *.s *.sh *.mapfile TestScripts/*.sh TestScripts/*.patch
 ifneq ($(IS_DARWIN),0)
 	@-xattr -c *
 endif
@@ -975,12 +981,12 @@ zip dist: | distclean convert
 .PHONY: iso
 iso: | zip
 ifneq ($(IS_DARWIN),0)
-	$(MKDIR) -p $(PWD)/cryptopp$(LIB_VER)
+	$(MKDIR) $(PWD)/cryptopp$(LIB_VER)
 	$(CP) cryptopp$(LIB_VER).zip $(PWD)/cryptopp$(LIB_VER)
 	hdiutil makehybrid -iso -joliet -o cryptopp$(LIB_VER).iso $(PWD)/cryptopp$(LIB_VER)
 	@-$(RM) -r $(PWD)/cryptopp$(LIB_VER)
 else ifneq ($(IS_LINUX),0)
-	$(MKDIR) -p $(PWD)/cryptopp$(LIB_VER)
+	$(MKDIR) $(PWD)/cryptopp$(LIB_VER)
 	$(CP) cryptopp$(LIB_VER).zip $(PWD)/cryptopp$(LIB_VER)
 	genisoimage -q -o cryptopp$(LIB_VER).iso $(PWD)/cryptopp$(LIB_VER)
 	@-$(RM) -r $(PWD)/cryptopp$(LIB_VER)
@@ -1005,12 +1011,10 @@ ifeq ($(wildcard GNUmakefile.deps),GNUmakefile.deps)
 -include GNUmakefile.deps
 endif # Dependencies
 
-# Run rdrand-nasm.sh to create the object files
-ifeq ($(USE_NASM),1)
-rdrand.o: rdrand.h rdrand.cpp rdrand.s
-	$(CXX) $(strip $(CXXFLAGS) -DNASM_RDRAND_ASM_AVAILABLE=1 -DNASM_RDSEED_ASM_AVAILABLE=1 -c rdrand.cpp)
-rdrand-%.o:
-	./rdrand-nasm.sh
+# IBM XLC -O3 optimization bug
+ifeq ($(XLC_COMPILER),1)
+sm3.o : sm3.cpp
+	$(CXX) $(strip $(subst -O3,-O2,$(CXXFLAGS)) -c) $<
 endif
 
 # SSSE3 or NEON available
@@ -1052,14 +1056,6 @@ sha-simd.o : sha-simd.cpp
 # SSE4.2/SHA-NI or ARMv8a available
 shacal2-simd.o : shacal2-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(SHA_FLAG) -c) $<
-
-# SSSE3 or NEON available
-simon-simd.o : simon-simd.cpp
-	$(CXX) $(strip $(CXXFLAGS) $(SIMON_FLAG) -c) $<
-
-# SSSE3 or NEON available
-speck-simd.o : speck-simd.cpp
-	$(CXX) $(strip $(CXXFLAGS) $(SPECK_FLAG) -c) $<
 
 # Don't build Rijndael with UBsan. Too much noise due to unaligned data accesses.
 ifneq ($(findstring -fsanitize=undefined,$(CXXFLAGS)),)
