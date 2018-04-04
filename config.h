@@ -54,6 +54,13 @@
 # endif
 #endif
 
+// Define this to disable ASM, intrinsics and built-ins. The library will be
+// compiled using C++ only. The library code will not include SSE2 (and
+// above), NEON, Aarch32, Aarch64, Power4, Power7 or Power8. Note the compiler
+// may use higher ISAs depending on compiler options, but the library will not
+// explictly use the ISAs.
+// #define CRYPTOPP_DISABLE_ASM 1
+
 // Define CRYPTOPP_NO_CXX11 to avoid C++11 related features shown at the
 // end of this file. Some compilers and standard C++ headers advertise C++11
 // but they are really just C++03 with some additional C++11 headers and
@@ -63,6 +70,10 @@
 // cause -Wterminate warnings under GCC. MSVC++ has a similar warning.
 // Also see https://github.com/weidai11/cryptopp/issues/529
 // #define CRYPTOPP_NO_CXX11 1
+
+// Define CRYPTOPP_NO_CXX17 to avoid C++17 related features shown at the end of
+// this file. At the moment it should only affect std::uncaught_exceptions.
+// #define CRYPTOPP_NO_CXX17 1
 
 // Define this to allow unaligned data access. If you experience a break with
 // GCC at -O3, you should immediately suspect unaligned data accesses.
@@ -74,7 +85,7 @@
 //   the version of the library the headers came from. It is not
 //   necessarily the version of the library built as a shared object if
 //   versions are inadvertently mixed and matched.
-#define CRYPTOPP_VERSION 610
+#define CRYPTOPP_VERSION 620
 
 // Define this if you want to set a prefix for TestData/ and TestVectors/
 //   Be mindful of the trailing slash since its simple concatenation.
@@ -220,18 +231,31 @@ namespace CryptoPP { }
 
 NAMESPACE_BEGIN(CryptoPP)
 
+// Signed words added at Issue 609 for early versions of and Visual Studio and
+//   the NaCl gear.  Also see https://github.com/weidai11/cryptopp/issues/609.
+
 typedef unsigned char byte;
 typedef unsigned short word16;
 typedef unsigned int word32;
 
+typedef signed char sbyte;
+typedef signed short sword16;
+typedef signed int sword32;
+
 #if defined(_MSC_VER) || defined(__BORLANDC__)
+	typedef signed __int64 sword64;
 	typedef unsigned __int64 word64;
+	#define SW64LIT(x) x##i64
 	#define W64LIT(x) x##ui64
 #elif (_LP64 || __LP64__)
+	typedef signed long sword64;
 	typedef unsigned long word64;
+	#define SW64LIT(x) x##L
 	#define W64LIT(x) x##UL
 #else
+	typedef signed long long sword64;
 	typedef unsigned long long word64;
+	#define SW64LIT(x) x##LL
 	#define W64LIT(x) x##ULL
 #endif
 
@@ -674,7 +698,7 @@ NAMESPACE_END
 #if !defined(CRYPTOPP_POWER8_AES_AVAILABLE) && !defined(CRYPTOPP_DISABLE_POWER8_AES) && defined(CRYPTOPP_POWER8_AVAILABLE)
 # if defined(__CRYPTO__) || defined(_ARCH_PWR8) || (CRYPTOPP_XLC_VERSION >= 130000) || (CRYPTOPP_GCC_VERSION >= 40800)
 #  define CRYPTOPP_POWER8_AES_AVAILABLE 1
-//#  define CRYPTOPP_POWER8_SHA_AVAILABLE 1
+#  define CRYPTOPP_POWER8_SHA_AVAILABLE 1
 //#  define CRYPTOPP_POWER8_CRC_AVAILABLE 1
 # endif
 #endif
@@ -951,10 +975,16 @@ NAMESPACE_END
 
 // ***************** C++11 related ********************
 
-// Visual Studio began at VS2010, http://msdn.microsoft.com/en-us/library/hh567368%28v=vs.110%29.aspx.
-// Intel and C++11 language features, http://software.intel.com/en-us/articles/c0x-features-supported-by-intel-c-compiler
-// GCC and C++11 language features, http://gcc.gnu.org/projects/cxx0x.html
-// Clang and C++11 language features, http://clang.llvm.org/cxx_status.html
+// Visual Studio began at VS2010, http://msdn.microsoft.com/en-us/library/hh567368%28v=vs.110%29.aspx
+//   and https://docs.microsoft.com/en-us/cpp/visual-cpp-language-conformance .
+// Intel, http://software.intel.com/en-us/articles/c0x-features-supported-by-intel-c-compiler
+// GCC, http://gcc.gnu.org/projects/cxx0x.html
+// Clang, http://clang.llvm.org/cxx_status.html
+
+// Compatibility with non-clang compilers.
+#ifndef __has_feature
+# define __has_feature(x) 0
+#endif
 
 #if !defined(CRYPTOPP_NO_CXX11)
 #  if ((_MSC_VER >= 1600) || (__cplusplus >= 201103L)) && !defined(_STLPORT_VERSION)
@@ -975,11 +1005,6 @@ NAMESPACE_END
 
 // C++11 or C++14 is available
 #if defined(CRYPTOPP_CXX11)
-
-// Compatibility with non-clang compilers.
-#ifndef __has_feature
-#  define __has_feature(x) 0
-#endif
 
 // atomics: MS at VS2012 (17.00); GCC at 4.4; Clang at 3.1/3.2; Intel 13.0; SunCC 5.14.
 #if (CRYPTOPP_MSC_VERSION >= 1700) || __has_feature(cxx_atomic) || \
@@ -1026,7 +1051,7 @@ NAMESPACE_END
 #endif // alignof
 
 // lambdas: MS at VS2012 (17.00); GCC at 4.9; Clang at 3.3; Intel 12.0; SunCC 5.14.
-#if (CRYPTOPP_MSC_VERSION >= 1700) || __has_feature(cxx_lambda) || \
+#if (CRYPTOPP_MSC_VERSION >= 1700) || __has_feature(cxx_lambdas) || \
 	(__INTEL_COMPILER >= 1200) || (CRYPTOPP_GCC_VERSION >= 40900) || (__SUNPRO_CC >= 0x5140)
 #  define CRYPTOPP_CXX11_LAMBDA 1
 #endif // lambdas
@@ -1063,9 +1088,33 @@ NAMESPACE_END
 # define CRYPTOPP_CXX11_NULLPTR 1
 #endif // nullptr_t compilers
 
-// TODO: Emplacement, R-values and Move semantics
-
 #endif // CRYPTOPP_CXX11
+
+// ***************** C++17 related ********************
+
+// C++17 macro version, https://stackoverflow.com/q/38456127/608639
+#if defined(CRYPTOPP_CXX11) && !defined(CRYPTOPP_NO_CXX17)
+#  if ((_MSC_VER >= 1900) || (__cplusplus >= 201703L)) && !defined(_STLPORT_VERSION)
+#    define CRYPTOPP_CXX17 1
+#  endif
+#endif
+
+// C++17 is available
+#if defined(CRYPTOPP_CXX17)
+
+// C++17 uncaught_exceptions: MS at VS2015 (19.00); GCC at 6.0; Clang at 3.5; Intel 18.0.
+// Clang and __EXCEPTIONS see http://releases.llvm.org/3.6.0/tools/clang/docs/ReleaseNotes.html
+#if defined(__clang__)
+# if __EXCEPTIONS && __has_feature(cxx_exceptions)
+#  define CRYPTOPP_CXX17_EXCEPTIONS 1
+# endif
+#elif (CRYPTOPP_MSC_VERSION >= 1900) || (__INTEL_COMPILER >= 1800) || (CRYPTOPP_GCC_VERSION >= 60000)
+# define CRYPTOPP_CXX17_EXCEPTIONS 1
+#endif // uncaught_exceptions compilers
+
+#endif  // CRYPTOPP_CXX17
+
+// ***************** C++ fixups ********************
 
 #if defined(CRYPTOPP_CXX11_NOEXCEPT)
 #  define CRYPTOPP_THROW noexcept(false)
@@ -1120,4 +1169,4 @@ NAMESPACE_END
 # error "std::uncaught_exception is not available. This is likely a configuration error."
 #endif
 
-#endif
+#endif  // CRYPTOPP_CONFIG_H
