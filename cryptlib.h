@@ -3,7 +3,7 @@
 /// \file cryptlib.h
 /// \brief Abstract base classes that provide a uniform interface to this library.
 
-/*!	\mainpage Crypto++ Library 6.2 API Reference
+/*!	\mainpage Crypto++ Library 7.1 API Reference
 <dl>
 <dt>Abstract Base Classes<dd>
 	cryptlib.h
@@ -1313,7 +1313,7 @@ public:
 	/// \details The standard algorithm name can be a name like \a AES or \a AES/GCM. Some algorithms
 	///   do not have standard names yet. For example, there is no standard algorithm name for
 	///   Shoup's ECIES.
-	virtual std::string AlgorithmName() const =0;
+	virtual std::string AlgorithmName() const;
 
 protected:
 	const Algorithm & GetAlgorithm() const
@@ -1473,6 +1473,12 @@ protected:
 	/// \param length the size of the derived key material, in bytes
 	/// \throws InvalidKeyLength if the key length is invalid
 	void ThrowIfInvalidDerivedLength(size_t length) const;
+};
+
+/// \brief Interface for password based key derivation functions
+/// \since Crypto++ 6.2
+struct PasswordBasedKeyDerivationFunction : public KeyDerivationFunction
+{
 };
 
 /// \brief Random Number Generator that does not produce random numbers
