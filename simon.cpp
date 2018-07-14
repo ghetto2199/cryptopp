@@ -225,6 +225,19 @@ extern size_t SIMON128_Dec_AdvancedProcessBlocks_SSSE3(const word64* subKeys, si
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 #endif
 
+std::string SIMON64::Base::AlgorithmProvider() const
+{
+#if defined(CRYPTOPP_SSE41_AVAILABLE)
+    if (HasSSE41())
+        return "SSE4.1";
+#endif
+#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+    if (HasNEON())
+        return "NEON";
+#endif
+    return "C++";
+}
+
 void SIMON64::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params)
 {
     CRYPTOPP_ASSERT(keyLength == 12 || keyLength == 16);
@@ -236,7 +249,7 @@ void SIMON64::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength,
     m_wspace.New(4U);
 
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word32, LittleEndian, false> KeyBlock;
+    typedef GetBlock<word32, LittleEndian> KeyBlock;
     KeyBlock kblk(userKey);
 
     switch (m_kwords)
@@ -259,7 +272,7 @@ void SIMON64::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength,
 void SIMON64::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word32, LittleEndian, false> InBlock;
+    typedef GetBlock<word32, LittleEndian> InBlock;
     InBlock iblk(inBlock); iblk(m_wspace[1])(m_wspace[0]);
 
     switch (m_rounds)
@@ -275,14 +288,14 @@ void SIMON64::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock,
     }
 
     // Do the endian gyrations from the paper and align pointers
-    typedef PutBlock<word32, LittleEndian, false> OutBlock;
+    typedef PutBlock<word32, LittleEndian> OutBlock;
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 
 void SIMON64::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word32, LittleEndian, false> InBlock;
+    typedef GetBlock<word32, LittleEndian> InBlock;
     InBlock iblk(inBlock); iblk(m_wspace[1])(m_wspace[0]);
 
     switch (m_rounds)
@@ -298,11 +311,24 @@ void SIMON64::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock,
     }
 
     // Do the endian gyrations from the paper and align pointers
-    typedef PutBlock<word32, LittleEndian, false> OutBlock;
+    typedef PutBlock<word32, LittleEndian> OutBlock;
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 
 ///////////////////////////////////////////////////////////
+
+std::string SIMON128::Base::AlgorithmProvider() const
+{
+#if defined(CRYPTOPP_SSSE3_AVAILABLE)
+    if (HasSSSE3())
+        return "SSSE3";
+#endif
+#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+    if (HasNEON())
+        return "NEON";
+#endif
+    return "C++";
+}
 
 void SIMON128::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params)
 {
@@ -315,7 +341,7 @@ void SIMON128::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength
     m_wspace.New(4U);
 
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word64, LittleEndian, false> KeyBlock;
+    typedef GetBlock<word64, LittleEndian> KeyBlock;
     KeyBlock kblk(userKey);
 
     switch (m_kwords)
@@ -343,7 +369,7 @@ void SIMON128::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength
 void SIMON128::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word64, LittleEndian, false> InBlock;
+    typedef GetBlock<word64, LittleEndian> InBlock;
     InBlock iblk(inBlock); iblk(m_wspace[1])(m_wspace[0]);
 
     switch (m_rounds)
@@ -362,14 +388,14 @@ void SIMON128::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock
     }
 
     // Do the endian gyrations from the paper and align pointers
-    typedef PutBlock<word64, LittleEndian, false> OutBlock;
+    typedef PutBlock<word64, LittleEndian> OutBlock;
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 
 void SIMON128::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word64, LittleEndian, false> InBlock;
+    typedef GetBlock<word64, LittleEndian> InBlock;
     InBlock iblk(inBlock); iblk(m_wspace[1])(m_wspace[0]);
 
     switch (m_rounds)
@@ -388,7 +414,7 @@ void SIMON128::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock
     }
 
     // Do the endian gyrations from the paper and align pointers
-    typedef PutBlock<word64, LittleEndian, false> OutBlock;
+    typedef PutBlock<word64, LittleEndian> OutBlock;
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 

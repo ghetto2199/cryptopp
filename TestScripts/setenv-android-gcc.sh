@@ -71,7 +71,7 @@ if [ -z "${AOSP_API-}" ]; then
 else
 	echo "WARNING: Using AOSP_API has been deprecated. Please use AOSP_API_VERSION instead."
 	echo "If you set for example AOSP_API=android-23 then now instead set AOSP_API_VERSION=23"
-	exit 1
+	[ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
 fi
 
 #####################################################################
@@ -126,8 +126,8 @@ case "$THE_ARCH" in
 	AOSP_FLAGS="-march=armv7-a -mthumb -mfpu=vfpv3-d16 -mfloat-abi=softfp -DCRYPTOPP_DISABLE_ASM -Wl,--fix-cortex-a8 -funwind-tables -fexceptions -frtti"
 	;;
   hard|armv7a-hard|armeabi-v7a-hard)
-    echo hard, armv7a-hard and armeabi-v7a-hard are not supported, as android uses softfloats
-    exit 1
+	echo hard, armv7a-hard and armeabi-v7a-hard are not supported, as android uses softfloats
+	[ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
 	#TOOLCHAIN_ARCH="arm-linux-androideabi"
 	#TOOLCHAIN_NAME="arm-linux-androideabi"
 	#AOSP_ABI="armeabi-v7a"
@@ -174,7 +174,7 @@ case "$THE_ARCH" in
 	TOOLCHAIN_NAME="x86_64-linux-android"
 	AOSP_ABI="x86_64"
 	AOSP_ARCH="arch-x86_64"
-	AOSP_FLAGS="-march=x86-64 -msse4.2 -mpopcnt -mtune=intel -DCRYPTOPP_DISABLE_CLMUL -DCRYPTOPP_DISABLE_AES -DCRYPTOPP_DISABLE_SHA -funwind-tables -fexceptions -frtti"
+	AOSP_FLAGS="-march=x86-64 -msse4.2 -mpopcnt -mtune=intel -DCRYPTOPP_DISABLE_CLMUL -DCRYPTOPP_DISABLE_AESNI -DCRYPTOPP_DISABLE_SHANI -funwind-tables -fexceptions -frtti"
 	;;
   *)
 	echo "ERROR: Unknown architecture $1"

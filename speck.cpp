@@ -200,6 +200,19 @@ extern size_t SPECK128_Dec_AdvancedProcessBlocks_SSSE3(const word64* subKeys, si
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 #endif
 
+std::string SPECK64::Base::AlgorithmProvider() const
+{
+#if defined(CRYPTOPP_SSE41_AVAILABLE)
+    if (HasSSE41())
+        return "SSE4.1";
+#endif
+#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+    if (HasNEON())
+        return "NEON";
+#endif
+    return "C++";
+}
+
 void SPECK64::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params)
 {
     CRYPTOPP_ASSERT(keyLength == 12 || keyLength == 16);
@@ -211,7 +224,7 @@ void SPECK64::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength,
     m_wspace.New(4U);
 
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word32, LittleEndian, false> KeyBlock;
+    typedef GetBlock<word32, LittleEndian> KeyBlock;
     KeyBlock kblk(userKey);
 
     switch (m_kwords)
@@ -234,7 +247,7 @@ void SPECK64::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength,
 void SPECK64::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word32, LittleEndian, false> InBlock;
+    typedef GetBlock<word32, LittleEndian> InBlock;
     InBlock iblk(inBlock); iblk(m_wspace[1])(m_wspace[0]);
 
     switch (m_rounds)
@@ -250,14 +263,14 @@ void SPECK64::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock,
     }
 
     // Do the endian gyrations from the paper and align pointers
-    typedef PutBlock<word32, LittleEndian, false> OutBlock;
+    typedef PutBlock<word32, LittleEndian> OutBlock;
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 
 void SPECK64::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word32, LittleEndian, false> InBlock;
+    typedef GetBlock<word32, LittleEndian> InBlock;
     InBlock iblk(inBlock); iblk(m_wspace[1])(m_wspace[0]);
 
     switch (m_rounds)
@@ -273,11 +286,24 @@ void SPECK64::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock,
     }
 
     // Do the endian gyrations from the paper and align pointers
-    typedef PutBlock<word32, LittleEndian, false> OutBlock;
+    typedef PutBlock<word32, LittleEndian> OutBlock;
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 
 ///////////////////////////////////////////////////////////
+
+std::string SPECK128::Base::AlgorithmProvider() const
+{
+#if defined(CRYPTOPP_SSSE3_AVAILABLE)
+    if (HasSSSE3())
+        return "SSSE3";
+#endif
+#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+    if (HasNEON())
+        return "NEON";
+#endif
+    return "C++";
+}
 
 void SPECK128::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params)
 {
@@ -290,7 +316,7 @@ void SPECK128::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength
     m_wspace.New(4U);
 
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word64, LittleEndian, false> KeyBlock;
+    typedef GetBlock<word64, LittleEndian> KeyBlock;
     KeyBlock kblk(userKey);
 
     switch (m_kwords)
@@ -318,7 +344,7 @@ void SPECK128::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength
 void SPECK128::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word64, LittleEndian, false> InBlock;
+    typedef GetBlock<word64, LittleEndian> InBlock;
     InBlock iblk(inBlock); iblk(m_wspace[1])(m_wspace[0]);
 
     switch (m_rounds)
@@ -337,14 +363,14 @@ void SPECK128::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock
     }
 
     // Do the endian gyrations from the paper and align pointers
-    typedef PutBlock<word64, LittleEndian, false> OutBlock;
+    typedef PutBlock<word64, LittleEndian> OutBlock;
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 
 void SPECK128::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
 {
     // Do the endian gyrations from the paper and align pointers
-    typedef GetBlock<word64, LittleEndian, false> InBlock;
+    typedef GetBlock<word64, LittleEndian> InBlock;
     InBlock iblk(inBlock); iblk(m_wspace[1])(m_wspace[0]);
 
     switch (m_rounds)
@@ -363,7 +389,7 @@ void SPECK128::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock
     }
 
     // Do the endian gyrations from the paper and align pointers
-    typedef PutBlock<word64, LittleEndian, false> OutBlock;
+    typedef PutBlock<word64, LittleEndian> OutBlock;
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 

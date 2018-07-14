@@ -151,6 +151,23 @@ ANONYMOUS_NAMESPACE_END
 // end of Steve Reid's code //
 //////////////////////////////
 
+std::string SHA1::AlgorithmProvider() const
+{
+#if CRYPTOPP_SHANI_AVAILABLE
+	if (HasSHA())
+		return "SHANI";
+#endif
+#if CRYPTOPP_SSE2_ASM_AVAILABLE && !defined(CRYPTOPP_DISABLE_SHA_ASM)
+	if (HasSSE2())
+		return "SSE2";
+#endif
+#if CRYPTOPP_ARM_SHA_AVAILABLE
+	if (HasSHA1())
+		return "ARMv8";
+#endif
+	return "C++";
+}
+
 void SHA1::InitState(HashWordType *state)
 {
     state[0] = 0x67452301;
@@ -319,6 +336,32 @@ void SHA256_HashBlock_CXX(word32 *state, const word32 *data)
 #undef h
 
 ANONYMOUS_NAMESPACE_END
+
+std::string SHA256_AlgorithmProvider()
+{
+#if CRYPTOPP_SHANI_AVAILABLE
+	if (HasSHA())
+		return "SHANI";
+#endif
+#if CRYPTOPP_SSE2_ASM_AVAILABLE && !defined(CRYPTOPP_DISABLE_SHA_ASM)
+	if (HasSSE2())
+		return "SSE2";
+#endif
+#if CRYPTOPP_ARM_SHA_AVAILABLE
+	if (HasSHA2())
+		return "ARMv8";
+#endif
+#if (CRYPTOPP_POWER8_SHA_AVAILABLE)
+	if (HasSHA256())
+		return "Power8";
+#endif
+	return "C++";
+}
+
+std::string SHA224::AlgorithmProvider() const
+{
+	return SHA256_AlgorithmProvider();
+}
 
 void SHA224::InitState(HashWordType *state)
 {
@@ -668,6 +711,11 @@ void CRYPTOPP_FASTCALL SHA256_HashMultipleBlocks_SSE2(word32 *state, const word3
 }
 #endif
 
+std::string SHA256::AlgorithmProvider() const
+{
+	return SHA256_AlgorithmProvider();
+}
+
 void SHA256::Transform(word32 *state, const word32 *data)
 {
     CRYPTOPP_ASSERT(state);
@@ -710,7 +758,7 @@ size_t SHA256::HashMultipleBlocks(const word32 *input, size_t length)
         return length & (SHA256::BLOCKSIZE - 1);
     }
 #endif
-#if CRYPTOPP_SSE2_ASM_AVAILABLE
+#if CRYPTOPP_SSE2_ASM_AVAILABLE || CRYPTOPP_X64_MASM_AVAILABLE
     if (HasSSE2())
     {
         const size_t res = length & (SHA256::BLOCKSIZE - 1);
@@ -812,6 +860,29 @@ size_t SHA224::HashMultipleBlocks(const word32 *input, size_t length)
 
 // *************************************************************
 
+std::string SHA512_AlgorithmProvider()
+{
+#if CRYPTOPP_SSE2_ASM_AVAILABLE && !defined(CRYPTOPP_DISABLE_SHA_ASM)
+	if (HasSSE2())
+		return "SSE2";
+#endif
+#if (CRYPTOPP_POWER8_SHA_AVAILABLE)
+	if (HasSHA512())
+		return "Power8";
+#endif
+	return "C++";
+}
+
+std::string SHA384::AlgorithmProvider() const
+{
+	return SHA512_AlgorithmProvider();
+}
+
+std::string SHA512::AlgorithmProvider() const
+{
+	return SHA512_AlgorithmProvider();
+}
+
 void SHA384::InitState(HashWordType *state)
 {
     const word64 s[8] = {
@@ -881,7 +952,13 @@ const word64 SHA512_K[80] = {
 
 #if CRYPTOPP_SSE2_ASM_AVAILABLE && (CRYPTOPP_BOOL_X86 || CRYPTOPP_BOOL_X32)
 
-ANONYMOUS_NAMESPACE_BEGIN
+// Anonymous namespace removed due to a new compile error.
+//   g++ -DNDEBUG -g2 -O3 -pthread -pipe -c sha.cpp
+//   sha.cpp: Assembler messages:
+//   sha.cpp:1155: Error: symbol `SHA512_Round' is already defined
+//   sha.cpp:1155: Error: symbol `SHA512_Round' is already defined
+
+// ANONYMOUS_NAMESPACE_BEGIN
 
 CRYPTOPP_NAKED void CRYPTOPP_FASTCALL SHA512_HashBlock_SSE2(word64 *state, const word64 *data)
 {
@@ -964,8 +1041,8 @@ CRYPTOPP_NAKED void CRYPTOPP_FASTCALL SHA512_HashBlock_SSE2(word64 *state, const
     AS2(    pxor     xmm7, xmm6)\
     AS2(    psrlq    r, c-b)\
     AS2(    pxor     r, xmm7)
-
     ASL(SHA512_Round)
+
     // k + w is in mm0, a is in mm4, e is in mm5
     AS2(    paddq    mm0, [edi+7*8])        // h
     AS2(    movq     mm2, [edi+5*8])        // f
@@ -999,6 +1076,7 @@ CRYPTOPP_NAKED void CRYPTOPP_FASTCALL SHA512_HashBlock_SSE2(word64 *state, const
     AS2(    movq     [esi+eax*8+16*8], mm0)
     AS2(    paddq    mm0, [ebx+eax*8])
     ASC(    call,    SHA512_Round)
+
     AS1(    inc      eax)
     AS2(    sub      edi, 8)
     AS2(    test     eax, 7)
@@ -1077,7 +1155,7 @@ CRYPTOPP_NAKED void CRYPTOPP_FASTCALL SHA512_HashBlock_SSE2(word64 *state, const
 #endif
 }
 
-ANONYMOUS_NAMESPACE_END
+// ANONYMOUS_NAMESPACE_END
 
 #endif    // CRYPTOPP_SSE2_ASM_AVAILABLE
 

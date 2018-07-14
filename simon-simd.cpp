@@ -43,13 +43,8 @@
 # include <arm_acle.h>
 #endif
 
-// https://www.spinics.net/lists/gcchelp/msg47735.html and
-// https://www.spinics.net/lists/gcchelp/msg47749.html
-#if (CRYPTOPP_GCC_VERSION >= 40900)
-# define GCC_NO_UBSAN __attribute__ ((no_sanitize_undefined))
-#else
-# define GCC_NO_UBSAN
-#endif
+// Squash MS LNK4221 and libtool warnings
+extern const char SIMON_SIMD_FNAME[] = __FILE__;
 
 ANONYMOUS_NAMESPACE_BEGIN
 
@@ -571,31 +566,26 @@ inline void Swap128(__m128i& a,__m128i& b)
 #endif
 }
 
+template <unsigned int R>
+inline __m128i RotateLeft64(const __m128i& val)
+{
 #if defined(CRYPTOPP_AVX512_ROTATE)
-template <unsigned int R>
-inline __m128i RotateLeft64(const __m128i& val)
-{
     return _mm_rol_epi64(val, R);
-}
-
-template <unsigned int R>
-inline __m128i RotateRight64(const __m128i& val)
-{
-    return _mm_ror_epi64(val, R);
-}
 #else
-template <unsigned int R>
-inline __m128i RotateLeft64(const __m128i& val)
-{
     return _mm_or_si128(
         _mm_slli_epi64(val, R), _mm_srli_epi64(val, 64-R));
+#endif
 }
 
 template <unsigned int R>
 inline __m128i RotateRight64(const __m128i& val)
 {
+#if defined(CRYPTOPP_AVX512_ROTATE)
+    return _mm_ror_epi64(val, R);
+#else
     return _mm_or_si128(
         _mm_slli_epi64(val, 64-R), _mm_srli_epi64(val, R));
+#endif
 }
 
 // Faster than two Shifts and an Or. Thanks to Louis Wingers and Bryan Weeks.
@@ -613,7 +603,6 @@ inline __m128i RotateRight64<8>(const __m128i& val)
     const __m128i mask = _mm_set_epi8(8,15,14,13, 12,11,10,9, 0,7,6,5, 4,3,2,1);
     return _mm_shuffle_epi8(val, mask);
 }
-#endif  // CRYPTOPP_AVX512_ROTATE
 
 inline __m128i SIMON128_f(const __m128i& v)
 {
@@ -621,7 +610,7 @@ inline __m128i SIMON128_f(const __m128i& v)
         _mm_and_si128(RotateLeft64<1>(v), RotateLeft64<8>(v)));
 }
 
-inline void GCC_NO_UBSAN SIMON128_Enc_Block(__m128i &block0, __m128i &block1,
+inline void SIMON128_Enc_Block(__m128i &block0, __m128i &block1,
     const word64 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read into
@@ -656,7 +645,7 @@ inline void GCC_NO_UBSAN SIMON128_Enc_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi64(y1, x1);
 }
 
-inline void GCC_NO_UBSAN SIMON128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SIMON128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word64 *subkeys, unsigned int rounds)
 {
@@ -705,7 +694,7 @@ inline void GCC_NO_UBSAN SIMON128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     block5 = _mm_unpackhi_epi64(y3, x3);
 }
 
-inline void GCC_NO_UBSAN SIMON128_Dec_Block(__m128i &block0, __m128i &block1,
+inline void SIMON128_Dec_Block(__m128i &block0, __m128i &block1,
     const word64 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read into
@@ -741,7 +730,7 @@ inline void GCC_NO_UBSAN SIMON128_Dec_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi64(y1, x1);
 }
 
-inline void GCC_NO_UBSAN SIMON128_Dec_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SIMON128_Dec_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word64 *subkeys, unsigned int rounds)
 {
@@ -832,7 +821,7 @@ inline __m128i SIMON64_f(const __m128i& v)
         _mm_and_si128(RotateLeft32<1>(v), RotateLeft32<8>(v)));
 }
 
-inline void GCC_NO_UBSAN SIMON64_Enc_Block(__m128i &block0, __m128i &block1,
+inline void SIMON64_Enc_Block(__m128i &block0, __m128i &block1,
     const word32 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read into
@@ -867,7 +856,7 @@ inline void GCC_NO_UBSAN SIMON64_Enc_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi32(y1, x1);
 }
 
-inline void GCC_NO_UBSAN SIMON64_Dec_Block(__m128i &block0, __m128i &block1,
+inline void SIMON64_Dec_Block(__m128i &block0, __m128i &block1,
     const word32 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read into
@@ -903,7 +892,7 @@ inline void GCC_NO_UBSAN SIMON64_Dec_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi32(y1, x1);
 }
 
-inline void GCC_NO_UBSAN SIMON64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SIMON64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word32 *subkeys, unsigned int rounds)
 {
@@ -959,7 +948,7 @@ inline void GCC_NO_UBSAN SIMON64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     block5 = _mm_unpackhi_epi32(y3, x3);
 }
 
-inline void GCC_NO_UBSAN SIMON64_Dec_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SIMON64_Dec_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word32 *subkeys, unsigned int rounds)
 {

@@ -360,6 +360,62 @@ template <class T, class F, int instance>
 
 // ************** misc functions ***************
 
+/// \brief Create a pointer with an offset
+/// \tparam PTR a pointer type
+/// \tparam OFF a size type
+/// \param pointer a pointer
+/// \param offset a offset into the pointer
+/// \details PtrAdd can be used to squash Clang and GCC
+///   UBsan findings for pointer addition and subtraction.
+template <typename PTR, typename OFF>
+inline PTR PtrAdd(PTR pointer, OFF offset)
+{
+	return pointer+static_cast<ptrdiff_t>(offset);
+}
+
+/// \brief Create a pointer with an offset
+/// \tparam PTR a pointer type
+/// \tparam OFF a size type
+/// \param pointer a pointer
+/// \param offset a offset into the pointer
+/// \details PtrSub can be used to squash Clang and GCC
+///   UBsan findings for pointer addition and subtraction.
+template <typename PTR, typename OFF>
+inline PTR PtrSub(PTR pointer, OFF offset)
+{
+	return pointer-static_cast<ptrdiff_t>(offset);
+}
+
+/// \brief Determine pointer difference
+/// \tparam PTR a pointer type
+/// \param pointer1 the first pointer
+/// \param pointer2 the second pointer
+/// \details PtrDiff can be used to squash Clang and GCC
+///   UBsan findings for pointer addition and subtraction.
+///   pointer1 and pointer2 must point to the same object or
+///   array (or one past the end), and yields the number of
+///   elements (not bytes) difference.
+template <typename PTR>
+inline ptrdiff_t PtrDiff(const PTR pointer1, const PTR pointer2)
+{
+	return pointer1 - pointer2;
+}
+
+/// \brief Determine pointer difference
+/// \tparam PTR a pointer type
+/// \param pointer1 the first pointer
+/// \param pointer2 the second pointer
+/// \details PtrByteDiff can be used to squash Clang and GCC
+///   UBsan findings for pointer addition and subtraction.
+///   pointer1 and pointer2 must point to the same object or
+///   array (or one past the end), and yields the number of
+///   bytes (not elements) difference.
+template <typename PTR>
+inline size_t PtrByteDiff(const PTR pointer1, const PTR pointer2)
+{
+	return (size_t)(reinterpret_cast<uintptr_t>(pointer1) - reinterpret_cast<uintptr_t>(pointer2));
+}
+
 #if (!__STDC_WANT_SECURE_LIB__ && !defined(_MEMORY_S_DEFINED)) || defined(CRYPTOPP_WANT_SECURE_LIB)
 
 /// \brief Bounds checking replacement for memcpy()
@@ -729,7 +785,7 @@ inline unsigned int TrailingZeros(word32 v)
 #elif defined(_MSC_VER) && (_MSC_VER >= 1400)
 	unsigned long result;
 	_BitScanForward(&result, v);
-	return (unsigned int)result;
+	return static_cast<unsigned int>(result);
 #else
 	// from http://graphics.stanford.edu/~seander/bithacks.html#ZerosOnRightMultLookup
 	static const int MultiplyDeBruijnBitPosition[32] =
@@ -760,7 +816,7 @@ inline unsigned int TrailingZeros(word64 v)
 #elif defined(_MSC_VER) && (_MSC_VER >= 1400) && (defined(_M_X64) || defined(_M_IA64))
 	unsigned long result;
 	_BitScanForward64(&result, v);
-	return (unsigned int)result;
+	return static_cast<unsigned int>(result);
 #else
 	return word32(v) ? TrailingZeros(word32(v)) : 32 + TrailingZeros(word32(v>>32));
 #endif
@@ -987,22 +1043,15 @@ inline T1 RoundUpToMultipleOf(const T1 &n, const T2 &m)
 /// \brief Returns the minimum alignment requirements of a type
 /// \tparam T class or type
 /// \returns the minimum alignment requirements of <tt>T</tt>, in bytes
-/// \details Internally the function calls C++11's <tt>alignof</tt> if available. If not available,
-///   then the function uses compiler specific extensions such as <tt>__alignof</tt> and
-///   <tt>_alignof_</tt>. If an extension is not available, then the function uses
-///   <tt>__BIGGEST_ALIGNMENT__</tt> if <tt>__BIGGEST_ALIGNMENT__</tt> is smaller than <tt>sizeof(T)</tt>.
-///   <tt>sizeof(T)</tt> is used if all others are not available.
-///   In <em>all</em> cases, if <tt>CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS</tt> is defined, then the
-///   function returns 1.
+/// \details Internally the function calls C++11's <tt>alignof</tt> if available. If not
+///   available, then the function uses compiler specific extensions such as
+///   <tt>__alignof</tt> and <tt>_alignof_</tt>. If an extension is not available, then
+///   the function uses <tt>__BIGGEST_ALIGNMENT__</tt> if <tt>__BIGGEST_ALIGNMENT__</tt>
+///   is smaller than <tt>sizeof(T)</tt>. <tt>sizeof(T)</tt> is used if all others are
+///   not available.
 template <class T>
 inline unsigned int GetAlignmentOf()
 {
-// GCC 4.6 (circa 2008) and above aggressively uses vectorization.
-#if defined(CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS)
-	if (sizeof(T) < 16)
-		return 1;
-#endif
-
 #if defined(CRYPTOPP_CXX11_ALIGNOF)
 	return alignof(T);
 #elif (_MSC_VER >= 1300)
@@ -1029,7 +1078,7 @@ inline unsigned int GetAlignmentOf()
 ///   If not, then the function effectively performs a modular reduction and returns true if the residue is 0
 inline bool IsAlignedOn(const void *ptr, unsigned int alignment)
 {
-	return alignment==1 || (IsPowerOf2(alignment) ? ModPowerOf2((size_t)ptr, alignment) == 0 : (size_t)ptr % alignment == 0);
+	return alignment==1 || (IsPowerOf2(alignment) ? ModPowerOf2(reinterpret_cast<size_t>(ptr), alignment) == 0 : reinterpret_cast<size_t>(ptr) % alignment == 0);
 }
 
 /// \brief Determines whether ptr is minimally aligned
@@ -1184,7 +1233,7 @@ template<> inline void SecureWipeBuffer(byte *buf, size_t n)
 #ifdef __GNUC__
 	asm volatile("rep stosb" : "+c"(n), "+D"(p) : "a"(0) : "memory");
 #else
-	__stosb((byte *)(size_t)p, 0, n);
+	__stosb(reinterpret_cast<byte *>(reinterpret_cast<size_t>(p)), 0, n);
 #endif
 }
 
@@ -1198,7 +1247,7 @@ template<> inline void SecureWipeBuffer(word16 *buf, size_t n)
 #ifdef __GNUC__
 	asm volatile("rep stosw" : "+c"(n), "+D"(p) : "a"(0) : "memory");
 #else
-	__stosw((word16 *)(size_t)p, 0, n);
+	__stosw(reinterpret_cast<word16 *>(reinterpret_cast<size_t>(p)), 0, n);
 #endif
 }
 
@@ -1212,7 +1261,7 @@ template<> inline void SecureWipeBuffer(word32 *buf, size_t n)
 #ifdef __GNUC__
 	asm volatile("rep stosl" : "+c"(n), "+D"(p) : "a"(0) : "memory");
 #else
-	__stosd((unsigned long *)(size_t)p, 0, n);
+	__stosd(reinterpret_cast<unsigned long *>(reinterpret_cast<size_t>(p)), 0, n);
 #endif
 }
 
@@ -1227,10 +1276,10 @@ template<> inline void SecureWipeBuffer(word64 *buf, size_t n)
 #ifdef __GNUC__
 	asm volatile("rep stosq" : "+c"(n), "+D"(p) : "a"(0) : "memory");
 #else
-	__stosq((word64 *)(size_t)p, 0, n);
+	__stosq(reinterpret_cast<word64 *>(reinterpret_cast<size_t>(p)), 0, n);
 #endif
 #else
-	SecureWipeBuffer((word32 *)buf, 2*n);
+	SecureWipeBuffer(reinterpret_cast<word32 *>(buf), 2*n);
 #endif
 }
 
@@ -1275,13 +1324,13 @@ template <class T>
 inline void SecureWipeArray(T *buf, size_t n)
 {
 	if (sizeof(T) % 8 == 0 && GetAlignmentOf<T>() % GetAlignmentOf<word64>() == 0)
-		SecureWipeBuffer((word64 *)(void *)buf, n * (sizeof(T)/8));
+		SecureWipeBuffer(reinterpret_cast<word64 *>(static_cast<void *>(buf)), n * (sizeof(T)/8));
 	else if (sizeof(T) % 4 == 0 && GetAlignmentOf<T>() % GetAlignmentOf<word32>() == 0)
-		SecureWipeBuffer((word32 *)(void *)buf, n * (sizeof(T)/4));
+		SecureWipeBuffer(reinterpret_cast<word32 *>(static_cast<void *>(buf)), n * (sizeof(T)/4));
 	else if (sizeof(T) % 2 == 0 && GetAlignmentOf<T>() % GetAlignmentOf<word16>() == 0)
-		SecureWipeBuffer((word16 *)(void *)buf, n * (sizeof(T)/2));
+		SecureWipeBuffer(reinterpret_cast<word16 *>(static_cast<void *>(buf)), n * (sizeof(T)/2));
 	else
-		SecureWipeBuffer((byte *)(void *)buf, n * sizeof(T));
+		SecureWipeBuffer(reinterpret_cast<byte *>(static_cast<void *>(buf)), n * sizeof(T));
 }
 
 /// \brief Converts a wide character C-string to a multibyte string
@@ -2057,7 +2106,6 @@ inline void GetUserKey(ByteOrder order, T *out, size_t outlen, const byte *in, s
 	ConditionalByteReverse(order, out, out, RoundUpToMultipleOf(inlen, U));
 }
 
-#ifndef CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS
 inline byte UnalignedGetWordNonTemplate(ByteOrder order, const byte *block, const byte *)
 {
 	CRYPTOPP_UNUSED(order);
@@ -2104,7 +2152,7 @@ inline word64 UnalignedGetWordNonTemplate(ByteOrder order, const byte *block, co
 inline void UnalignedbyteNonTemplate(ByteOrder order, byte *block, byte value, const byte *xorBlock)
 {
 	CRYPTOPP_UNUSED(order);
-	block[0] = (byte)(xorBlock ? (value ^ xorBlock[0]) : value);
+	block[0] = static_cast<byte>(xorBlock ? (value ^ xorBlock[0]) : value);
 }
 
 inline void UnalignedbyteNonTemplate(ByteOrder order, byte *block, word16 value, const byte *xorBlock)
@@ -2228,7 +2276,6 @@ inline void UnalignedbyteNonTemplate(ByteOrder order, byte *block, word64 value,
 		}
 	}
 }
-#endif	// #ifndef CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS
 
 /// \brief Access a block of memory
 /// \tparam T class or type
@@ -2250,13 +2297,10 @@ template <class T>
 inline T GetWord(bool assumeAligned, ByteOrder order, const byte *block)
 {
 	CRYPTOPP_UNUSED(assumeAligned);
-#ifdef CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS
-	return ConditionalByteReverse(order, *reinterpret_cast<const T *>((const void *)block));
-#else
+
 	T temp;
 	memcpy(&temp, block, sizeof(T));
 	return ConditionalByteReverse(order, temp);
-#endif
 }
 
 /// \brief Access a block of memory
@@ -2295,14 +2339,11 @@ template <class T>
 inline void PutWord(bool assumeAligned, ByteOrder order, byte *block, T value, const byte *xorBlock = NULLPTR)
 {
 	CRYPTOPP_UNUSED(assumeAligned);
-#ifdef CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS
-	*reinterpret_cast<T *>((void *)block) = ConditionalByteReverse(order, value) ^ (xorBlock ? *reinterpret_cast<const T *>((const void *)xorBlock) : 0);
-#else
+
 	T t1, t2;
 	t1 = ConditionalByteReverse(order, value);
 	if (xorBlock) {memcpy(&t2, xorBlock, sizeof(T)); t1 ^= t2;}
 	memcpy(block, &t1, sizeof(T));
-#endif
 }
 
 /// \brief Access a block of memory

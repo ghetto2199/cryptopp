@@ -95,6 +95,7 @@
       <DisableSpecificWarnings>4231; 4251; 4275; 4355; 4505</DisableSpecificWarnings>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalOptions>$(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Lib>
       <ErrorReporting>NoErrorReport</ErrorReporting>
@@ -190,6 +191,8 @@
     <ClCompile Include="cbcmac.cpp" />
     <ClCompile Include="ccm.cpp" />
     <ClCompile Include="chacha.cpp" />
+    <ClCompile Include="cham.cpp" />
+    <ClCompile Include="cham-simd.cpp" />
     <ClCompile Include="channels.cpp" />
     <ClCompile Include="cmac.cpp" />
     <ClCompile Include="crc.cpp" />
@@ -227,7 +230,10 @@
     <ClCompile Include="gfpcrypt.cpp" />
     <ClCompile Include="gost.cpp" />
     <ClCompile Include="gzip.cpp" />
+    <ClCompile Include="hc128.cpp" />
+    <ClCompile Include="hc256.cpp" />
     <ClCompile Include="hex.cpp" />
+    <ClCompile Include="hight.cpp" />
     <ClCompile Include="hmac.cpp" />
     <ClCompile Include="hrtimer.cpp" />
     <ClCompile Include="ida.cpp" />
@@ -238,6 +244,8 @@
     <ClCompile Include="kalyna.cpp" />
     <ClCompile Include="kalynatab.cpp" />
     <ClCompile Include="keccak.cpp" />
+    <ClCompile Include="lea.cpp" />
+    <ClCompile Include="lea-simd.cpp" />
     <ClCompile Include="luc.cpp" />
     <ClCompile Include="mars.cpp" />
     <ClCompile Include="marss.cpp" />
@@ -265,6 +273,7 @@
     <ClCompile Include="queue.cpp" />
     <ClCompile Include="rabin.cpp" />
     <ClCompile Include="randpool.cpp" />
+    <ClCompile Include="rabbit.cpp" />
     <ClCompile Include="rc2.cpp" />
     <ClCompile Include="rc5.cpp" />
     <ClCompile Include="rc6.cpp" />
@@ -289,12 +298,15 @@
     <ClCompile Include="shacal2-simd.cpp" />
     <ClCompile Include="shark.cpp" />
     <ClCompile Include="sharkbox.cpp" />
+    <ClCompile Include="simeck.cpp" />
+    <ClCompile Include="simeck-simd.cpp" />
     <ClCompile Include="simon.cpp" />
     <ClCompile Include="simon-simd.cpp" />
     <ClCompile Include="simple.cpp" />
     <ClCompile Include="skipjack.cpp" />
     <ClCompile Include="sm3.cpp" />
     <ClCompile Include="sm4.cpp" />
+    <ClCompile Include="sm4-simd.cpp" />
     <ClCompile Include="socketft.cpp" />
     <ClCompile Include="sosemanuk.cpp" />
     <ClCompile Include="speck.cpp" />
@@ -381,6 +393,7 @@
     <ClInclude Include="cbcmac.h" />
     <ClInclude Include="ccm.h" />
     <ClInclude Include="chacha.h" />
+    <ClInclude Include="cham.h" />
     <ClInclude Include="channels.h" />
     <ClInclude Include="cmac.h" />
     <ClInclude Include="config.h" />
@@ -415,7 +428,10 @@
     <ClInclude Include="gfpcrypt.h" />
     <ClInclude Include="gost.h" />
     <ClInclude Include="gzip.h" />
+    <ClInclude Include="hc128.h" />
+    <ClInclude Include="hc256.h" />
     <ClInclude Include="hex.h" />
+    <ClInclude Include="hight.h" />
     <ClInclude Include="hkdf.h" />
     <ClInclude Include="hmac.h" />
     <ClInclude Include="hmqv.h" />
@@ -427,6 +443,7 @@
     <ClInclude Include="kalyna.h" />
     <ClInclude Include="keccak.h" />
     <ClInclude Include="lubyrack.h" />
+    <ClInclude Include="lea.h" />
     <ClInclude Include="luc.h" />
     <ClInclude Include="mars.h" />
     <ClInclude Include="md2.h" />
@@ -458,6 +475,7 @@
     <ClInclude Include="queue.h" />
     <ClInclude Include="rabin.h" />
     <ClInclude Include="randpool.h" />
+    <ClInclude Include="rabbit.h" />
     <ClInclude Include="rc2.h" />
     <ClInclude Include="rc5.h" />
     <ClInclude Include="rc6.h" />
@@ -480,6 +498,7 @@
     <ClInclude Include="shacal2.h" />
     <ClInclude Include="shark.h" />
     <ClInclude Include="simple.h" />
+    <ClInclude Include="simeck.h" />
     <ClInclude Include="simon.h" />
     <ClInclude Include="siphash.h" />
     <ClInclude Include="skipjack.h" />

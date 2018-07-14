@@ -84,30 +84,32 @@ public:
                 "(" + IntToString(m_kwords*sizeof(word32)*8) + ")");
         }
 
+        std::string AlgorithmProvider() const;
+
     protected:
         void UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params);
     };
 
-    /// \brief Provides implementation for encryption transformation
+    /// \brief Encryption transformation
     /// \details Enc provides implementation for encryption transformation. All key
     ///   sizes are supported.
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Enc : public Base
     {
-    protected:
+    public:
         void ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const;
 #if CRYPTOPP_SPECK64_ADVANCED_PROCESS_BLOCKS
         size_t AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags) const;
 #endif
     };
 
-    /// \brief Provides implementation for encryption transformation
+    /// \brief Encryption transformation
     /// \details Dec provides implementation for decryption transformation. All key
     ///   sizes are supported.
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Dec : public Base
     {
-    protected:
+    public:
         void ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const;
 #if CRYPTOPP_SPECK64_ADVANCED_PROCESS_BLOCKS
         size_t AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags) const;
@@ -141,30 +143,32 @@ public:
                 "(" + IntToString(m_kwords*sizeof(word64)*8) + ")");
         }
 
+        std::string AlgorithmProvider() const;
+
     protected:
         void UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params);
     };
 
-    /// \brief Provides implementation for encryption transformation
+    /// \brief Encryption transformation
     /// \details Enc provides implementation for encryption transformation. All key
     ///   sizes are supported.
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Enc : public Base
     {
-    protected:
+    public:
         void ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const;
 #if CRYPTOPP_SPECK128_ADVANCED_PROCESS_BLOCKS
         size_t AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags) const;
 #endif
     };
 
-    /// \brief Provides implementation for encryption transformation
+    /// \brief Encryption transformation
     /// \details Dec provides implementation for decryption transformation. All key
     ///   sizes are supported.
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Dec : public Base
     {
-    protected:
+    public:
         void ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const;
 #if CRYPTOPP_SPECK128_ADVANCED_PROCESS_BLOCKS
         size_t AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags) const;

@@ -42,6 +42,7 @@
 #include "shacal2.h"
 #include "camellia.h"
 #include "aria.h"
+#include "lea.h"
 #include "osrng.h"
 #include "drbg.h"
 #include "rdrand.h"
@@ -170,9 +171,16 @@ bool ValidateAll(bool thorough)
 	pass=ValidateSerpent() && pass;
 	pass=ValidateSHACAL2() && pass;
 	pass=ValidateARIA() && pass;
+	pass=ValidateCHAM() && pass;
+	pass=ValidateHIGHT() && pass;
+	pass=ValidateLEA() && pass;
+	pass=ValidateSIMECK() && pass;
 	pass=ValidateCamellia() && pass;
 	pass=ValidateSalsa() && pass;
 	pass=ValidateSosemanuk() && pass;
+	pass=ValidateRabbit() && pass;
+	pass=ValidateHC128() && pass;
+	pass=ValidateHC256() && pass;
 	pass=RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/seed.txt") && pass;
 	pass=RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/threefish.txt") && pass;
 	pass=RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/kalyna.txt") && pass;
@@ -273,19 +281,8 @@ bool TestSettings()
 	std::cout << "Library version (library): " << v1 << ", header version (app): " << v2 << "\n";
 #endif
 
-#ifdef CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS
-	// Don't assert the alignment of testvals. That's what this test is for.
-	byte testvals[10] = {1,2,2,3,3,3,3,2,2,1};
-	if (*(word32 *)(void *)(testvals+3) == 0x03030303 && *(word64 *)(void *)(testvals+1) == W64LIT(0x0202030303030202))
-		std::cout << "passed:  Unaligned data access (CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS).\n";
-	else
-	{
-		std::cout << "FAILED:  Unaligned data access gave incorrect results.\n";
-		pass = false;
-	}
-#else
-	std::cout << "passed:  Aligned data access (no CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS).\n";
-#endif
+	// CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS removed at Issue 682.
+	std::cout << "passed:  Aligned data access.\n";
 
 	if (sizeof(byte) == 1)
 		std::cout << "passed:  ";
@@ -366,13 +363,25 @@ bool TestSettings()
 	bool hasSSSE3 = HasSSSE3();
 	bool hasSSE41 = HasSSE41();
 	bool hasSSE42 = HasSSE42();
+	bool hasAVX = HasAVX();
+	bool hasAVX2 = HasAVX2();
+	bool hasAESNI = HasAESNI();
+	bool hasCLMUL = HasCLMUL();
+	bool hasRDRAND = HasRDRAND();
+	bool hasRDSEED = HasRDSEED();
+	bool hasSHA = HasSHA();
 	bool isP4 = IsP4();
 
-	std::cout << "hasSSE2 == " << hasSSE2 << ", hasSSSE3 == " << hasSSSE3 << ", hasSSE4.1 == " << hasSSE41 << ", hasSSE4.2 == " << hasSSE42;
-	std::cout << ", hasAESNI == " << HasAESNI() << ", hasCLMUL == " << HasCLMUL() << ", hasRDRAND == " << HasRDRAND() << ", hasRDSEED == " << HasRDSEED();
-	std::cout << ", hasSHA == " << HasSHA() << ", isP4 == " << isP4 << "\n";
+	std::cout << "hasSSE2 == " << hasSSE2 << ", hasSSSE3 == " << hasSSSE3;
+	std::cout << ", hasSSE4.1 == " << hasSSE41 << ", hasSSE4.2 == " << hasSSE42;
+	std::cout << ", hasAVX == " << hasAVX << ", hasAVX2 == " << hasAVX2;
+	std::cout << ", hasAESNI == " << hasAESNI << ", hasCLMUL == " << hasCLMUL;
+	std::cout << ", hasRDRAND == " << hasRDRAND << ", hasRDSEED == " << hasRDSEED;
+	std::cout << ", hasSHA == " << hasSHA << ", isP4 == " << isP4;
+	std::cout << "\n";
 
 #elif (CRYPTOPP_BOOL_ARM32 || CRYPTOPP_BOOL_ARM64)
+	bool hasARMv7 = HasARMv7();
 	bool hasNEON = HasNEON();
 	bool hasCRC32 = HasCRC32();
 	bool hasPMULL = HasPMULL();
@@ -381,8 +390,10 @@ bool TestSettings()
 	bool hasSHA2 = HasSHA2();
 
 	std::cout << "passed:  ";
-	std::cout << "hasNEON == " << hasNEON << ", hasCRC32 == " << hasCRC32 << ", hasPMULL == " << hasPMULL;
-	std::cout << ", hasAES == " << hasAES << ", hasSHA1 == " << hasSHA1 << ", hasSHA2 == " << hasSHA2 << "\n";
+	std::cout << "hasARMv7 == " << hasARMv7 << ", hasNEON == " << hasNEON;
+	std::cout << ", hasCRC32 == " << hasCRC32 << ", hasPMULL == " << hasPMULL;
+	std::cout << ", hasAES == " << hasAES << ", hasSHA1 == " << hasSHA1;
+	std::cout << ", hasSHA2 == " << hasSHA2 << "\n";
 
 #elif (CRYPTOPP_BOOL_PPC32 || CRYPTOPP_BOOL_PPC64)
 	const bool hasAltivec = HasAltivec();
@@ -393,8 +404,9 @@ bool TestSettings()
 	const bool hasSHA512 = HasSHA512();
 
 	std::cout << "passed:  ";
-	std::cout << "hasAltivec == " << hasAltivec << ", hasPower7 == " << hasPower7 << ", hasPower8 == " << hasPower8;
-	std::cout << ", hasAES == " << hasAES << ", hasSHA256 == " << hasSHA256 << ", hasSHA512 == " << hasSHA512 << "\n";
+	std::cout << "hasAltivec == " << hasAltivec << ", hasPower7 == " << hasPower7;
+	std::cout << ", hasPower8 == " << hasPower8 << ", hasAES == " << hasAES;
+	std::cout << ", hasSHA256 == " << hasSHA256 << ", hasSHA512 == " << hasSHA512 << "\n";
 
 #endif
 
@@ -3386,6 +3398,34 @@ bool ValidateARIA()
 	return pass1 && pass2 && pass3;
 }
 
+bool ValidateSIMECK()
+{
+	std::cout << "\nSIMECK validation suite running...\n";
+
+	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/simeck.txt");
+}
+
+bool ValidateCHAM()
+{
+	std::cout << "\nCHAM validation suite running...\n";
+
+	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/cham.txt");
+}
+
+bool ValidateHIGHT()
+{
+	std::cout << "\nHIGHT validation suite running...\n";
+
+	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/hight.txt");
+}
+
+bool ValidateLEA()
+{
+	std::cout << "\nLEA validation suite running...\n";
+
+	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/lea.txt");
+}
+
 bool ValidateCamellia()
 {
 	std::cout << "\nCamellia validation suite running...\n\n";
@@ -3430,6 +3470,24 @@ bool ValidateSosemanuk()
 {
 	std::cout << "\nSosemanuk validation suite running...\n";
 	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/sosemanuk.txt");
+}
+
+bool ValidateRabbit()
+{
+	std::cout << "\nRabbit validation suite running...\n";
+	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/rabbit.txt");
+}
+
+bool ValidateHC128()
+{
+	std::cout << "\nHC-128 validation suite running...\n";
+	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/hc128.txt");
+}
+
+bool ValidateHC256()
+{
+	std::cout << "\nHC-256 validation suite running...\n";
+	return RunTestDataFile(CRYPTOPP_DATA_DIR "TestVectors/hc256.txt");
 }
 
 bool ValidateVMAC()

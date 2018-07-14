@@ -129,6 +129,13 @@ else
   CXXFLAGS ?= -DNDEBUG -g2 -O3
 endif
 
+# On ARM we may compile aes-armv4.S though the CC compiler
+ifeq ($(GCC_COMPILER),1)
+  CC=gcc
+else ifeq ($(CLANG_COMPILER),1)
+  CC=clang
+endif
+
 # Default prefix for make install
 ifeq ($(PREFIX),)
 PREFIX = /usr/local
@@ -249,7 +256,10 @@ ifeq ($(findstring -DCRYPTOPP_DISABLE_SSSE3,$(CXXFLAGS)),)
   HAVE_SSSE3 = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -mssse3 -dM -E - 2>/dev/null | $(GREP) -i -c __SSSE3__)
   ifeq ($(HAVE_SSSE3),1)
     ARIA_FLAG = -mssse3
+    CHAM_FLAG = -mssse3
+    LEA_FLAG = -mssse3
     SSSE3_FLAG = -mssse3
+    SIMECK_FLAG = -mssse3
     SIMON_FLAG = -mssse3
     SPECK_FLAG = -mssse3
   endif
@@ -272,6 +282,7 @@ ifeq ($(findstring -DCRYPTOPP_DISABLE_AESNI,$(CXXFLAGS)),)
   HAVE_AES = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -msse4.1 -maes -dM -E - 2>/dev/null | $(GREP) -i -c __AES__)
   ifeq ($(HAVE_AES),1)
     AES_FLAG = -msse4.1 -maes
+    SM4_FLAG = -mssse3 -maes
   endif
 ifeq ($(findstring -DCRYPTOPP_DISABLE_SHA,$(CXXFLAGS)),)
   HAVE_SHA = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -msse4.2 -msha -dM -E - 2>/dev/null | $(GREP) -i -c __SHA__)
@@ -289,6 +300,9 @@ ifeq ($(SUN_COMPILER),1)
   ifeq ($(COUNT),0)
     SSSE3_FLAG = -xarch=ssse3 -D__SSSE3__=1
     ARIA_FLAG = -xarch=ssse3 -D__SSSE3__=1
+    CHAM_FLAG = -xarch=ssse3 -D__SSSE3__=1
+    LEA_FLAG = -xarch=ssse3 -D__SSSE3__=1
+    SIMECK_FLAG = -xarch=ssse3 -D__SSSE3__=1
     SIMON_FLAG = -xarch=ssse3 -D__SSSE3__=1
     SPECK_FLAG = -xarch=ssse3 -D__SSSE3__=1
     LDFLAGS += -xarch=ssse3
@@ -309,6 +323,7 @@ ifeq ($(SUN_COMPILER),1)
   ifeq ($(COUNT),0)
     GCM_FLAG = -xarch=aes -D__PCLMUL__=1
     AES_FLAG = -xarch=aes -D__AES__=1
+    SM4_FLAG = -xarch=aes -D__AES__=1
     LDFLAGS += -xarch=aes
   endif
   COUNT := $(shell $(CXX) $(CXXFLAGS) -E -xarch=sha -xdumpmacros /dev/null 2>&1 | $(GREP) -i -c "illegal")
@@ -374,8 +389,12 @@ ifeq ($(IS_NEON),1)
     GCM_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
     ARIA_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
     BLAKE2_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
+    CHAM_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
+    LEA_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
+    SIMECK_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
     SIMON_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
     SPECK_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
+    SM4_FLAG = -march=armv7-a -mfloat-abi=$(FP_ABI) -mfpu=neon
   endif
 endif
 
@@ -384,9 +403,13 @@ ifeq ($(IS_ARMV8),1)
   ifeq ($(HAVE_NEON),1)
     ARIA_FLAG = -march=armv8-a
     BLAKE2_FLAG = -march=armv8-a
+    CHAM_FLAG = -march=armv8-a
+    LEA_FLAG = -march=armv8-a
     NEON_FLAG = -march=armv8-a
+    SIMECK_FLAG = -march=armv8-a
     SIMON_FLAG = -march=armv8-a
     SPECK_FLAG = -march=armv8-a
+    SM4_FLAG = -march=armv8-a
   endif
   HAVE_CRC = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -march=armv8-a+crc -dM -E - 2>/dev/null | $(GREP) -i -c __ARM_FEATURE_CRC32)
   ifeq ($(HAVE_CRC),1)
@@ -397,6 +420,10 @@ ifeq ($(IS_ARMV8),1)
     AES_FLAG = -march=armv8-a+crypto
     GCM_FLAG = -march=armv8-a+crypto
     SHA_FLAG = -march=armv8-a+crypto
+  endif
+  HAVE_CRYPTO = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -march=armv8.4-a+crypto -dM -E - 2>/dev/null | $(GREP) -i -c __ARM_FEATURE_CRYPTO)
+  ifeq ($(HAVE_CRYPTO),1)
+    SM4_FLAG = -march=armv8.4-a+crypto
   endif
 endif
 
@@ -410,6 +437,7 @@ ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
     ARIA_FLAG = -mcpu=power4 -maltivec
     BLAKE2_FLAG = -mcpu=power4 -maltivec
     SIMON_FLAG = -mcpu=power4 -maltivec
+    SIMECK_FLAG = -mcpu=power4 -maltivec
     SPECK_FLAG = -mcpu=power4 -maltivec
   endif
   # GCC and some compatibles
@@ -419,6 +447,7 @@ ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
     AES_FLAG = -mcpu=power8 -maltivec
     GCM_FLAG = -mcpu=power8 -maltivec
     SHA_FLAG = -mcpu=power8 -maltivec
+    SIMECK_FLAG = -mcpu=power8 -maltivec
     SIMON_FLAG = -mcpu=power8 -maltivec
     SPECK_FLAG = -mcpu=power8 -maltivec
   endif
@@ -428,6 +457,7 @@ ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
     ALTIVEC_FLAG = -qarch=pwr7 -qaltivec
     ARIA_FLAG = -qarch=pwr7 -qaltivec
     BLAKE2_FLAG = -qarch=pwr7 -qaltivec
+    SIMECK_FLAG = -qarch=pwr7 -qaltivec
     SIMON_FLAG = -qarch=pwr7 -qaltivec
     SPECK_FLAG = -qarch=pwr7 -qaltivec
   endif
@@ -440,6 +470,7 @@ ifneq ($(IS_PPC32)$(IS_PPC64)$(IS_AIX),000)
     SHA_FLAG = -qarch=pwr8 -qaltivec
     ARIA_FLAG = -qarch=pwr8 -qaltivec
     BLAKE2_FLAG = -qarch=pwr8 -qaltivec
+    SIMECK_FLAG = -qarch=pwr8 -qaltivec
     SIMON_FLAG = -qarch=pwr8 -qaltivec
     SPECK_FLAG = -qarch=pwr8 -qaltivec
   endif
@@ -707,20 +738,31 @@ SRCS += winpipes.cpp
 INCL += resource.h
 endif
 
+# Cryptogams AES for ARMv4 and above. We couple to ARMv7.
+# Disable Thumb via -marm due to unaligned byte buffers.
+ifeq ($(IS_ARM32),1)
+CRYPTOGAMS_AES_ARCH = -march=armv7-a -marm
+SRCS += aes-armv4.S
+endif
+
 # List cryptlib.cpp first, then cpu.cpp, then integer.cpp to tame C++ static initialization problems.
 OBJS := $(SRCS:.cpp=.o)
+OBJS := $(OBJS:.S=.o)
 
 # List test.cpp first to tame C++ static initialization problems.
 TESTSRCS := adhoc.cpp test.cpp bench1.cpp bench2.cpp validat0.cpp validat1.cpp validat2.cpp validat3.cpp validat4.cpp datatest.cpp regtest1.cpp regtest2.cpp regtest3.cpp dlltest.cpp fipsalgt.cpp
 TESTINCL := bench.h factory.h validate.h
+
 # Test objects
 TESTOBJS := $(TESTSRCS:.cpp=.o)
 LIBOBJS := $(filter-out $(TESTOBJS),$(OBJS))
 
-# List cryptlib.cpp first, then cpu.cpp, then integer.cpp to tame C++ static initialization problems.
-DLLSRCS :=  cryptlib.cpp cpu.cpp integer.cpp 3way.cpp adler32.cpp algebra.cpp algparam.cpp arc4.cpp aria-simd.cpp aria.cpp ariatab.cpp asn.cpp authenc.cpp base32.cpp base64.cpp basecode.cpp bfinit.cpp blake2-simd.cpp blake2.cpp blowfish.cpp blumshub.cpp camellia.cpp cast.cpp casts.cpp cbcmac.cpp ccm.cpp chacha.cpp channels.cpp cmac.cpp crc-simd.cpp crc.cpp default.cpp des.cpp dessp.cpp dh.cpp dh2.cpp dll.cpp dsa.cpp eax.cpp ec2n.cpp eccrypto.cpp ecp.cpp elgamal.cpp emsa2.cpp eprecomp.cpp esign.cpp files.cpp filters.cpp fips140.cpp fipstest.cpp gcm-simd.cpp gcm.cpp gf256.cpp gf2_32.cpp gf2n.cpp gfpcrypt.cpp gost.cpp gzip.cpp hex.cpp hmac.cpp hrtimer.cpp ida.cpp idea.cpp iterhash.cpp kalyna.cpp kalynatab.cpp keccak.cpp luc.cpp mars.cpp marss.cpp md2.cpp md4.cpp md5.cpp misc.cpp modes.cpp mqueue.cpp mqv.cpp nbtheory.cpp neon-simd.cpp network.cpp oaep.cpp ospstore.cpp osrng.cpp panama.cpp pkcspad.cpp poly1305.cpp polynomi.cpp pssr.cpp pubkey.cpp queue.cpp rabin.cpp randpool.cpp rc2.cpp rc5.cpp rc6.cpp rdrand.cpp rdtables.cpp rijndael.cpp ripemd.cpp rng.cpp rsa.cpp rw.cpp safer.cpp salsa.cpp seal.cpp seed.cpp serpent.cpp sha-simd.cpp sha.cpp sha3.cpp shacal2-simd.cpp shacal2.cpp shark.cpp sharkbox.cpp skipjack.cpp socketft.cpp sosemanuk.cpp square.cpp squaretb.cpp strciphr.cpp tea.cpp tftables.cpp threefish.cpp tiger.cpp tigertab.cpp trdlocal.cpp ttmac.cpp twofish.cpp vmac.cpp wait.cpp wake.cpp whrlpool.cpp xtr.cpp xtrcrypt.cpp zdeflate.cpp zinflate.cpp zlib.cpp
-
+# In Crypto++ 5.6.2 these were the source and object files for the FIPS DLL.
+# Since the library is on the Historical Validation List we add all files.
+# The 5.6.2 list is at https://github.com/weidai11/cryptopp/blob/789f81f048c9.
+DLLSRCS := $(SRCS)
 DLLOBJS := $(DLLSRCS:.cpp=.export.o)
+DLLOBJS := $(DLLOBJS:.S=.export.o)
 
 # Import lib testing
 LIBIMPORTOBJS := $(LIBOBJS:.o=.import.o)
@@ -790,13 +832,17 @@ test check: cryptest.exe
 # Used to generate list of source files for Autotools, CMakeList, Android.mk, etc
 .PHONY: sources
 sources: adhoc.cpp
-	$(info Library sources: $(filter-out $(TESTSRCS),$(SRCS)))
+	$(info ***** Library sources *****)
+	$(info $(filter-out $(TESTSRCS),$(SRCS)))
 	$(info )
-	$(info Library headers: $(filter-out $(TESTINCL),$(INCL)))
+	$(info ***** Library headers *****)
+	$(info $(filter-out $(TESTINCL),$(INCL)))
 	$(info )
-	$(info Test sources: $(TESTSRCS))
+	$(info ***** Test sources *****)
+	$(info $(TESTSRCS))
 	$(info )
-	$(info Test headers: $(TESTINCL))
+	$(info ***** Test sources *****)
+	$(info $(TESTSRCS))
 
 # Directory we want (can't specify on Doygen command line)
 DOCUMENT_DIRECTORY := ref$(LIB_VER)
@@ -835,8 +881,8 @@ clean:
 distclean: clean
 	-$(RM) adhoc.cpp adhoc.cpp.copied GNUmakefile.deps benchmarks.html cryptest.txt cryptest-*.txt
 	@-$(RM) libcryptopp.pc cryptopp.tgz *.o *.bc *.ii *~
-	@-$(RM) -r $(SRCS:.cpp=.obj) cryptlib.lib cryptest.exe *.suo *.sdf *.pdb Win32/ x64/ ipch/
-	@-$(RM) -r $(DOCUMENT_DIRECTORY)/
+	@-$(RM) -r cryptlib.lib cryptest.exe *.suo *.sdf *.pdb Win32/ x64/ ipch/
+	@-$(RM) -r $(LIBOBJS:.o=.obj) $(TESTOBJS:.o=.obj) $(DOCUMENT_DIRECTORY)/
 	@-$(RM) -f configure.ac configure configure.in Makefile.am Makefile.in Makefile
 	@-$(RM) -f config.guess config.status config.sub depcomp install-sh compile
 	@-$(RM) -f stamp-h1 ar-lib *.m4 local.* lt*.sh missing libtool* libcryptopp.pc*
@@ -845,23 +891,28 @@ distclean: clean
 	@-$(RM) cryptopp$(LIB_VER)\.*
 	@-$(RM) CryptoPPRef.zip
 
-# Some users already have a libcryptopp.pc. We install it if the file
-# is present. If you want one, then issue 'make libcryptopp.pc'.
+# Install cryptest.exe, libcryptopp.a, libcryptopp.so and libcryptopp.pc.
+# The library install was broken-out into its own recipe at GH #653.
 .PHONY: install
-install:
-	@-$(MKDIR) $(DESTDIR)$(INCLUDEDIR)/cryptopp
-	$(INSTALL_DATA) *.h $(DESTDIR)$(INCLUDEDIR)/cryptopp
-ifneq ($(wildcard libcryptopp.a),)
-	@-$(MKDIR) $(DESTDIR)$(LIBDIR)
-	$(INSTALL_DATA) libcryptopp.a $(DESTDIR)$(LIBDIR)
-endif
-ifneq ($(wildcard cryptest.exe),)
+install: cryptest.exe install-lib
 	@-$(MKDIR) $(DESTDIR)$(BINDIR)
 	$(INSTALL_PROGRAM) cryptest.exe $(DESTDIR)$(BINDIR)
 	@-$(MKDIR) $(DESTDIR)$(DATADIR)/cryptopp/TestData
 	@-$(MKDIR) $(DESTDIR)$(DATADIR)/cryptopp/TestVectors
 	$(INSTALL_DATA) TestData/*.dat $(DESTDIR)$(DATADIR)/cryptopp/TestData
 	$(INSTALL_DATA) TestVectors/*.txt $(DESTDIR)$(DATADIR)/cryptopp/TestVectors
+
+# A recipe to install only the library, and not cryptest.exe. Also
+# see https://github.com/weidai11/cryptopp/issues/653. Some users
+# already have a libcryptopp.pc. Install the *.pc file if the file
+# is present. If you want one, then issue 'make libcryptopp.pc'.
+.PHONY: install-lib
+install-lib:
+	@-$(MKDIR) $(DESTDIR)$(INCLUDEDIR)/cryptopp
+	$(INSTALL_DATA) *.h $(DESTDIR)$(INCLUDEDIR)/cryptopp
+ifneq ($(wildcard libcryptopp.a),)
+	@-$(MKDIR) $(DESTDIR)$(LIBDIR)
+	$(INSTALL_DATA) libcryptopp.a $(DESTDIR)$(LIBDIR)
 endif
 ifneq ($(wildcard libcryptopp.dylib),)
 	@-$(MKDIR) $(DESTDIR)$(LIBDIR)
@@ -961,7 +1012,7 @@ libcryptopp.pc:
 	@echo 'Libs: -L$${libdir} -lcryptopp' >> libcryptopp.pc
 
 # This recipe prepares the distro files
-TEXT_FILES := *.h *.cpp adhoc.cpp.proto License.txt Readme.txt Install.txt Filelist.txt Doxyfile cryptest* cryptlib* dlltest* cryptdll* *.sln *.vcxproj *.filters cryptopp.rc TestVectors/*.txt TestData/*.dat TestScripts/*.sh TestScripts/*.cmd
+TEXT_FILES := *.h *.cpp adhoc.cpp.proto License.txt Readme.txt Install.txt Filelist.txt Doxyfile cryptest* cryptlib* dlltest* cryptdll* *.sln *.s *.S *.vcxproj *.filters cryptopp.rc TestVectors/*.txt TestData/*.dat TestScripts/*.sh TestScripts/*.cmd
 EXEC_FILES := GNUmakefile GNUmakefile-cross TestData/ TestVectors/ TestScripts/
 
 ifeq ($(wildcard Filelist.txt),Filelist.txt)
@@ -971,11 +1022,11 @@ endif
 .PHONY: trim
 trim:
 ifneq ($(IS_DARWIN),0)
-	sed -i '' -e's/[[:space:]]*$$//' *.supp *.txt *.sh .*.yml *.h *.cpp *.asm *.s *.sln *.vcxproj *.filters GNUmakefile GNUmakefile-cross
+	sed -i '' -e's/[[:space:]]*$$//' *.supp *.txt *.sh .*.yml *.h *.cpp *.asm *.s *.S *.sln *.vcxproj *.filters GNUmakefile GNUmakefile-cross
 	sed -i '' -e's/[[:space:]]*$$//' TestData/*.dat TestVectors/*.txt TestScripts/*.*
 	make convert
 else
-	sed -i -e's/[[:space:]]*$$//' *.supp *.txt *.sh .*.yml *.h *.cpp *.asm *.s *.sln *.vcxproj *.filters GNUmakefile GNUmakefile-cross
+	sed -i -e's/[[:space:]]*$$//' *.supp *.txt *.sh .*.yml *.h *.cpp *.asm *.s *.S *.sln *.vcxproj *.filters GNUmakefile GNUmakefile-cross
 	sed -i -e's/[[:space:]]*$$//' TestData/*.dat TestVectors/*.txt TestScripts/*.*
 	make convert
 endif
@@ -1031,11 +1082,9 @@ ifeq ($(wildcard GNUmakefile.deps),GNUmakefile.deps)
 -include GNUmakefile.deps
 endif # Dependencies
 
-# IBM XLC -O3 optimization bug
-ifeq ($(XLC_COMPILER),1)
-sm3.o : sm3.cpp
-	$(CXX) $(strip $(subst -O3,-O2,$(CXXFLAGS)) -c) $<
-endif
+# Cryptogams ARM asm implementation. CRYPTOGAMS_AES_ARCH includes -marm.
+aes-armv4.o : aes-armv4.S
+	$(CC) $(strip $(CXXFLAGS) $(CRYPTOGAMS_AES_ARCH) -mfloat-abi=$(FP_ABI) -c) $<
 
 # SSSE3 or NEON available
 aria-simd.o : aria-simd.cpp
@@ -1044,6 +1093,10 @@ aria-simd.o : aria-simd.cpp
 # SSE4.1 or ARMv8a available
 blake2-simd.o : blake2-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(BLAKE2_FLAG) -c) $<
+
+# SSSE3 available
+cham-simd.o : cham-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(CHAM_FLAG) -c) $<
 
 # SSE2 on i586
 sse-simd.o : sse-simd.cpp
@@ -1056,6 +1109,10 @@ crc-simd.o : crc-simd.cpp
 # PCLMUL or ARMv7a/ARMv8a available
 gcm-simd.o : gcm-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(GCM_FLAG) -c) $<
+
+# SSSE3 available
+lea-simd.o : lea-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(LEA_FLAG) -c) $<
 
 # NEON available
 neon-simd.o : neon-simd.cpp
@@ -1078,12 +1135,26 @@ shacal2-simd.o : shacal2-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(SHA_FLAG) -c) $<
 
 # SSSE3 or NEON available
+simeck-simd.o : simeck-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(SIMECK_FLAG) -c) $<
+
+# SSSE3 or NEON available
 simon-simd.o : simon-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(SIMON_FLAG) -c) $<
 
 # SSSE3 or NEON available
 speck-simd.o : speck-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(SPECK_FLAG) -c) $<
+
+# AESNI available
+sm4-simd.o : sm4-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(SM4_FLAG) -c) $<
+
+# IBM XLC -O3 optimization bug
+ifeq ($(XLC_COMPILER),1)
+sm3.o : sm3.cpp
+	$(CXX) $(strip $(subst -O3,-O2,$(CXXFLAGS)) -c) $<
+endif
 
 # Don't build Rijndael with UBsan. Too much noise due to unaligned data accesses.
 ifneq ($(findstring -fsanitize=undefined,$(CXXFLAGS)),)

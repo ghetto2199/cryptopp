@@ -43,13 +43,8 @@
 # include <arm_acle.h>
 #endif
 
-// https://www.spinics.net/lists/gcchelp/msg47735.html and
-// https://www.spinics.net/lists/gcchelp/msg47749.html
-#if (CRYPTOPP_GCC_VERSION >= 40900)
-# define GCC_NO_UBSAN __attribute__ ((no_sanitize_undefined))
-#else
-# define GCC_NO_UBSAN
-#endif
+// Squash MS LNK4221 and libtool warnings
+extern const char SPECK_SIMD_FNAME[] = __FILE__;
 
 ANONYMOUS_NAMESPACE_BEGIN
 
@@ -507,31 +502,26 @@ inline void SPECK128_Dec_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
 # define CONST_DOUBLE_CAST(x) ((const double *)(const void *)(x))
 #endif
 
+template <unsigned int R>
+inline __m128i RotateLeft64(const __m128i& val)
+{
 #if defined(CRYPTOPP_AVX512_ROTATE)
-template <unsigned int R>
-inline __m128i RotateLeft64(const __m128i& val)
-{
     return _mm_rol_epi64(val, R);
-}
-
-template <unsigned int R>
-inline __m128i RotateRight64(const __m128i& val)
-{
-    return _mm_ror_epi64(val, R);
-}
 #else
-template <unsigned int R>
-inline __m128i RotateLeft64(const __m128i& val)
-{
     return _mm_or_si128(
         _mm_slli_epi64(val, R), _mm_srli_epi64(val, 64-R));
+#endif
 }
 
 template <unsigned int R>
 inline __m128i RotateRight64(const __m128i& val)
 {
+#if defined(CRYPTOPP_AVX512_ROTATE)
+    return _mm_ror_epi64(val, R);
+#else
     return _mm_or_si128(
         _mm_slli_epi64(val, 64-R), _mm_srli_epi64(val, R));
+#endif
 }
 
 // Faster than two Shifts and an Or. Thanks to Louis Wingers and Bryan Weeks.
@@ -550,9 +540,7 @@ inline __m128i RotateRight64<8>(const __m128i& val)
     return _mm_shuffle_epi8(val, mask);
 }
 
-#endif  // CRYPTOPP_AVX512_ROTATE
-
-inline void GCC_NO_UBSAN SPECK128_Enc_Block(__m128i &block0, __m128i &block1,
+inline void SPECK128_Enc_Block(__m128i &block0, __m128i &block1,
     const word64 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read into
@@ -579,7 +567,7 @@ inline void GCC_NO_UBSAN SPECK128_Enc_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi64(y1, x1);
 }
 
-inline void GCC_NO_UBSAN SPECK128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SPECK128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word64 *subkeys, unsigned int rounds)
 {
@@ -625,7 +613,7 @@ inline void GCC_NO_UBSAN SPECK128_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     block5 = _mm_unpackhi_epi64(y3, x3);
 }
 
-inline void GCC_NO_UBSAN SPECK128_Dec_Block(__m128i &block0, __m128i &block1,
+inline void SPECK128_Dec_Block(__m128i &block0, __m128i &block1,
     const word64 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read into
@@ -652,7 +640,7 @@ inline void GCC_NO_UBSAN SPECK128_Dec_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi64(y1, x1);
 }
 
-inline void GCC_NO_UBSAN SPECK128_Dec_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SPECK128_Dec_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word64 *subkeys, unsigned int rounds)
 {
@@ -732,7 +720,7 @@ inline __m128i RotateRight32<8>(const __m128i& val)
     return _mm_shuffle_epi8(val, mask);
 }
 
-inline void GCC_NO_UBSAN SPECK64_Enc_Block(__m128i &block0, __m128i &block1,
+inline void SPECK64_Enc_Block(__m128i &block0, __m128i &block1,
     const word32 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read into
@@ -762,7 +750,7 @@ inline void GCC_NO_UBSAN SPECK64_Enc_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi32(y1, x1);
 }
 
-inline void GCC_NO_UBSAN SPECK64_Dec_Block(__m128i &block0, __m128i &block1,
+inline void SPECK64_Dec_Block(__m128i &block0, __m128i &block1,
     const word32 *subkeys, unsigned int rounds)
 {
     // Rearrange the data for vectorization. The incoming data was read into
@@ -792,7 +780,7 @@ inline void GCC_NO_UBSAN SPECK64_Dec_Block(__m128i &block0, __m128i &block1,
     block1 = _mm_unpackhi_epi32(y1, x1);
 }
 
-inline void GCC_NO_UBSAN SPECK64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SPECK64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word32 *subkeys, unsigned int rounds)
 {
@@ -847,7 +835,7 @@ inline void GCC_NO_UBSAN SPECK64_Enc_6_Blocks(__m128i &block0, __m128i &block1,
     block5 = _mm_unpackhi_epi32(y3, x3);
 }
 
-inline void GCC_NO_UBSAN SPECK64_Dec_6_Blocks(__m128i &block0, __m128i &block1,
+inline void SPECK64_Dec_6_Blocks(__m128i &block0, __m128i &block1,
     __m128i &block2, __m128i &block3, __m128i &block4, __m128i &block5,
     const word32 *subkeys, unsigned int rounds)
 {

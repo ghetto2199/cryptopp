@@ -88,7 +88,7 @@ ifeq ($(IS_IOS),1)
   CXX = clang++
 
   CXXFLAGS += $(IOS_FLAGS) -arch $(IOS_ARCH)
-  CXXFLAGS += -isysroot $(IOS_SYSROOT) -stdlib=libc++
+  CXXFLAGS += -isysroot "$(IOS_SYSROOT)" -stdlib=libc++
 
   AR = libtool
   ARFLAGS = -static -o
@@ -224,6 +224,7 @@ ifeq ($(IS_ARMv7),1)
     GCM_FLAG = -march=armv7-a
     ARIA_FLAG = -march=armv7-a
     BLAKE2_FLAG = -march=armv7-a
+    LEA_FLAG = -march=armv7-a
   endif
 endif
 
@@ -234,6 +235,8 @@ ifeq ($(IS_NEON),1)
     GCM_FLAG += -mfpu=neon
     ARIA_FLAG += -mfpu=neon
     BLAKE2_FLAG += -mfpu=neon
+    LEA_FLAG += -mfpu=neon
+    SIMECK_FLAG += -mfpu=neon
     SIMON_FLAG += -mfpu=neon
     SPECK_FLAG += -mfpu=neon
     ifeq ($(IS_ANDROID),1)
@@ -242,6 +245,8 @@ ifeq ($(IS_NEON),1)
         GCM_FLAG += -mfloat-abi=softfp
         ARIA_FLAG += -mfloat-abi=softfp
         BLAKE2_FLAG += -mfloat-abi=softfp
+        LEA_FLAG += -mfloat-abi=softfp
+        SIMECK_FLAG += -mfloat-abi=softfp
         SIMON_FLAG += -mfloat-abi=softfp
         SPECK_FLAG += -mfloat-abi=softfp
       endif
@@ -255,7 +260,9 @@ ifneq ($(IS_ARMv8),0)
   ifeq ($(IS_NEON),1)
     ARIA_FLAG = -march=armv8-a
     BLAKE2_FLAG = -march=armv8-a
+    LEA_FLAG = -march=armv8-a
     NEON_FLAG = -march=armv8-a
+    SIMECK_FLAG = -march=armv8-a
     SIMON_FLAG = -march=armv8-a
     SPECK_FLAG = -march=armv8-a
   endif
@@ -269,6 +276,10 @@ ifneq ($(IS_ARMv8),0)
     GCM_FLAG = -march=armv8-a+crypto
     SHA_FLAG = -march=armv8-a+crypto
   endif
+  HAVE_CRYPTO := $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -march=armv8.4-a+crypto -dM -E - 2>/dev/null | $(EGREP) -i -c __ARM_FEATURE_CRYPTO)
+  ifeq ($(HAVE_CRYPTO),1)
+    SM4_FLAG = -march=armv8.4-a+crypto
+  endif
 endif
 
 # i686 and x86_64
@@ -276,7 +287,10 @@ ifneq ($(IS_i686)$(IS_x86_64),00)
   HAVE_SSSE3 = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -mssse3 -dM -E - 2>/dev/null | $(EGREP) -i -c __SSSE3__)
   ifeq ($(HAVE_SSSE3),1)
     ARIA_FLAG = -mssse3
+    CHAM_FLAG = -mssse3
+    LEA_FLAG = -mssse3
     SSSE3_FLAG = -mssse3
+    SIMECK_FLAG = -mssse3
     SIMON_FLAG = -mssse3
     SPECK_FLAG = -mssse3
   endif
@@ -297,6 +311,7 @@ ifneq ($(IS_i686)$(IS_x86_64),00)
   HAVE_AES = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -msse4.1 -maes -dM -E - 2>/dev/null | $(EGREP) -i -c __AES__)
   ifeq ($(HAVE_AES),1)
     AES_FLAG = -msse4.1 -maes
+    SM4_FLAG = -mssse3 -maes
   endif
   HAVE_SHA = $(shell echo | $(CXX) -x c++ $(CXXFLAGS) -msse4.2 -msha -dM -E - 2>/dev/null | $(EGREP) -i -c __SHA__)
   ifeq ($(HAVE_SHA),1)
@@ -387,18 +402,23 @@ distclean: clean
 	@-$(RM) cryptopp$(LIB_VER)\.*
 	@-$(RM) CryptoPPRef.zip
 
+# Install cryptest.exe, libcryptopp.a and libcryptopp.so.
+# The library install was broken-out into its own recipe at GH #653.
 .PHONY: install
-install:
-	@-$(MKDIR) $(DESTDIR)$(INCLUDEDIR)/cryptopp
-	$(INSTALL_DATA) *.h $(DESTDIR)$(INCLUDEDIR)/cryptopp
-ifneq ($(wildcard cryptest.exe),)
+install: cryptest.exe install-lib
 	@-$(MKDIR) $(DESTDIR)$(BINDIR)
 	$(INSTALL_PROGRAM) cryptest.exe $(DESTDIR)$(BINDIR)
 	@-$(MKDIR) $(DESTDIR)$(DATADIR)/cryptopp/TestData
 	@-$(MKDIR) $(DESTDIR)$(DATADIR)/cryptopp/TestVectors
 	$(INSTALL_DATA) TestData/*.dat $(DESTDIR)$(DATADIR)/cryptopp/TestData
 	$(INSTALL_DATA) TestVectors/*.txt $(DESTDIR)$(DATADIR)/cryptopp/TestVectors
-endif
+
+# A recipe to install only the library, and not cryptest.exe. Also
+# see https://github.com/weidai11/cryptopp/issues/653.
+.PHONY: install-lib
+install-lib:
+	@-$(MKDIR) $(DESTDIR)$(INCLUDEDIR)/cryptopp
+	$(INSTALL_DATA) *.h $(DESTDIR)$(INCLUDEDIR)/cryptopp
 ifneq ($(wildcard libcryptopp.a),)
 	@-$(MKDIR) $(DESTDIR)$(LIBDIR)
 	$(INSTALL_DATA) libcryptopp.a $(DESTDIR)$(LIBDIR)
@@ -482,6 +502,10 @@ aria-simd.o : aria-simd.cpp
 blake2-simd.o : blake2-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(BLAKE2_FLAG) -c) $<
 
+# SSSE3 available
+cham-simd.o : cham-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(CHAM_FLAG) -c) $<
+
 # SSE2 on i586
 cpu.o : cpu.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(CPU_FLAG) -c) $<
@@ -493,6 +517,10 @@ crc-simd.o : crc-simd.cpp
 # PCLMUL or ARMv7a/ARMv8a available
 gcm-simd.o : gcm-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(GCM_FLAG) -c) $<
+
+# SSSE3 or ARMv8a available
+lea-simd.o : lea-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(LEA_FLAG) -c) $<
 
 # NEON available
 neon-simd.o : neon-simd.cpp
@@ -511,12 +539,20 @@ shacal2-simd.o : shacal2-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(SHA_FLAG) -c) $<
 
 # SSSE3 or NEON available
+simeck-simd.o : simeck-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(SIMECK_FLAG) -c) $<
+
+# SSSE3 or NEON available
 simon-simd.o : simon-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(SIMON_FLAG) -c) $<
 
 # SSSE3 or NEON available
 speck-simd.o : speck-simd.cpp
 	$(CXX) $(strip $(CXXFLAGS) $(SPECK_FLAG) -c) $<
+
+# AESNI available
+sm4-simd.o : sm4-simd.cpp
+	$(CXX) $(strip $(CXXFLAGS) $(SM4_FLAG) -c) $<
 
 %.o : %.cpp
 	$(CXX) $(strip $(CXXFLAGS) -c) $<

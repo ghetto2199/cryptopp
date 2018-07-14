@@ -89,6 +89,15 @@ void Whirlpool_TestInstantiations()
 }
 #endif
 
+std::string Whirlpool::AlgorithmProvider() const
+{
+#if CRYPTOPP_SSE2_ASM_AVAILABLE
+	if (HasSSE2())
+		return "SSE2";
+#endif
+	return "C++";
+}
+
 void Whirlpool::InitState(HashWordType *state)
 {
 	memset(state, 0, 8*sizeof(state[0]));
@@ -96,6 +105,7 @@ void Whirlpool::InitState(HashWordType *state)
 
 void Whirlpool::TruncatedFinal(byte *hash, size_t size)
 {
+	CRYPTOPP_ASSERT(hash != NULLPTR);
 	ThrowIfInvalidTruncatedSize(size);
 
 	PadLastBlock(32);
@@ -407,6 +417,9 @@ const word64 Whirlpool_C[4*256+R] = {
 // Whirlpool basic transformation. Transforms state based on block.
 void Whirlpool::Transform(word64 *digest, const word64 *block)
 {
+	CRYPTOPP_ASSERT(digest != NULLPTR);
+	CRYPTOPP_ASSERT(block != NULLPTR);
+
 #if CRYPTOPP_SSE2_ASM_AVAILABLE
 	if (HasSSE2())
 	{

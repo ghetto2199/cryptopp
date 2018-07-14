@@ -66,6 +66,9 @@
 #define M128_CAST(x) ((__m128i *)(void *)(x))
 #define CONST_M128_CAST(x) ((const __m128i *)(const void *)(x))
 
+// Squash MS LNK4221 and libtool warnings
+extern const char RIJNDAEL_SIMD_FNAME[] = __FILE__;
+
 NAMESPACE_BEGIN(CryptoPP)
 
 #ifdef CRYPTOPP_GNU_STYLE_INLINE_ASSEMBLY
@@ -341,14 +344,14 @@ ANONYMOUS_NAMESPACE_END
 size_t Rijndael_Enc_AdvancedProcessBlocks_ARMV8(const word32 *subKeys, size_t rounds,
             const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks128_NEON1x6(ARMV8_Enc_Block, ARMV8_Enc_6_Blocks,
+    return AdvancedProcessBlocks128_6x1_NEON(ARMV8_Enc_Block, ARMV8_Enc_6_Blocks,
             subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 
 size_t Rijndael_Dec_AdvancedProcessBlocks_ARMV8(const word32 *subKeys, size_t rounds,
             const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
-    return AdvancedProcessBlocks128_NEON1x6(ARMV8_Dec_Block, ARMV8_Dec_6_Blocks,
+    return AdvancedProcessBlocks128_6x1_NEON(ARMV8_Dec_Block, ARMV8_Dec_6_Blocks,
             subKeys, rounds, inBlocks, xorBlocks, outBlocks, length, flags);
 }
 

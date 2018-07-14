@@ -284,6 +284,25 @@ void BLAKE2_Base<W, T_64bit>::UncheckedSetKey(const byte *key, unsigned int leng
     }
 }
 
+std::string BLAKE2_Base_AlgorithmProvider()
+{
+#if defined(CRYPTOPP_SSE41_AVAILABLE)
+    if (HasSSE41())
+        return "SSE4.1";
+#endif
+#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+    if (HasNEON())
+        return "NEON";
+#endif
+    return "C++";
+}
+
+template <class W, bool T_64bit>
+std::string BLAKE2_Base<W, T_64bit>::AlgorithmProvider() const
+{
+	return BLAKE2_Base_AlgorithmProvider();
+}
+
 template <class W, bool T_64bit>
 BLAKE2_Base<W, T_64bit>::BLAKE2_Base() : m_state(1), m_block(1), m_digestSize(DIGESTSIZE), m_treeMode(false)
 {
@@ -356,6 +375,9 @@ void BLAKE2_Base<W, T_64bit>::Restart(const BLAKE2_ParameterBlock<T_64bit>& bloc
 template <class W, bool T_64bit>
 void BLAKE2_Base<W, T_64bit>::Update(const byte *input, size_t length)
 {
+    CRYPTOPP_ASSERT(!(input == NULLPTR && length != 0));
+    if (length == 0) { return; }
+
     State& state = *m_state.data();
     if (state.length + length > BLOCKSIZE)
     {
@@ -390,6 +412,7 @@ void BLAKE2_Base<W, T_64bit>::Update(const byte *input, size_t length)
 template <class W, bool T_64bit>
 void BLAKE2_Base<W, T_64bit>::TruncatedFinal(byte *hash, size_t size)
 {
+    CRYPTOPP_ASSERT(hash != NULLPTR);
     this->ThrowIfInvalidTruncatedSize(size);
 
     // Set last block unconditionally

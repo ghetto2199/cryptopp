@@ -21,6 +21,14 @@
 # include <unistd.h>
 #endif
 
+//#if CRYPTOPP_BOOL_X64 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X86
+//# if defined(_MSC_VER)
+//#  include <intrin.h>
+//# else
+//#  include <immintrin.h>
+//# endif
+//#endif
+
 // Capability queries, requires Glibc 2.16, http://lwn.net/Articles/519085/
 // CRYPTOPP_GLIBC_VERSION not used because config.h is missing <feature.h>
 #if (((__GLIBC__ * 100) + __GLIBC_MINOR__) >= 216)
@@ -39,12 +47,14 @@
 unsigned long int getauxval(unsigned long int) { return 0; }
 #endif
 
-#if defined(__APPLE__) && (defined(__aarch64__) || defined(__POWERPC__))
+#if defined(__APPLE__)
 # include <sys/utsname.h>
 #endif
 
-// The cpu-features header and source file are located in $ANDROID_NDK_ROOT/sources/android/cpufeatures
-// setenv-android.sh will copy the header and source file into PWD and the makefile will build it in place.
+// The cpu-features header and source file are located in
+// "$ANDROID_NDK_ROOT/sources/android/cpufeatures".
+// setenv-android.sh will copy the header and source file
+// into PWD and the makefile will build it in place.
 #if defined(__ANDROID__)
 # include "cpu-features.h"
 #endif
@@ -53,6 +63,60 @@ unsigned long int getauxval(unsigned long int) { return 0; }
 # include <signal.h>
 # include <setjmp.h>
 #endif
+
+ANONYMOUS_NAMESPACE_BEGIN
+
+#if defined(__APPLE__)
+enum {PowerMac=1, Mac, iPhone, iPod, iPad, AppleTV, AppleWatch};
+void GetAppleMachineInfo(unsigned int& device, unsigned int& version)
+{
+	device = version = 0;
+
+	struct utsname systemInfo;
+	systemInfo.machine[0] = '\0';
+	uname(&systemInfo);
+
+	std::string machine(systemInfo.machine);
+	if (machine.find("PowerMac") != std::string::npos ||
+	    machine.find("Power Macintosh") != std::string::npos)
+		device = PowerMac;
+	else if (machine.find("Mac") != std::string::npos ||
+	         machine.find("Macintosh") != std::string::npos)
+		device = Mac;
+	else if (machine.find("iPhone") != std::string::npos)
+		device = iPhone;
+	else if (machine.find("iPod") != std::string::npos)
+		device = iPod;
+	else if (machine.find("iPad") != std::string::npos)
+		device = iPad;
+	else if (machine.find("AppleTV") != std::string::npos)
+		device = AppleTV;
+	else if (machine.find("AppleWatch") != std::string::npos)
+		device = AppleWatch;
+
+	std::string::size_type pos = machine.find_first_of("0123456789");
+	if (pos != std::string::npos)
+		version = std::atoi(machine.substr(pos).c_str());
+}
+
+// http://stackoverflow.com/questions/45637888/how-to-determine-armv8-features-at-runtime-on-ios
+bool IsAppleMachineARMv8(unsigned int device, unsigned int version)
+{
+	if ((device == iPhone && version >= 6) ||
+	    (device == iPad && version >= 4))
+	{
+		return true;
+	}
+	return false;
+}
+
+bool IsAppleMachineARMv84(unsigned int device, unsigned int version)
+{
+	return false;
+}
+#endif  // __APPLE__
+
+ANONYMOUS_NAMESPACE_END
 
 NAMESPACE_BEGIN(CryptoPP)
 
@@ -187,6 +251,8 @@ bool CRYPTOPP_SECTION_INIT g_hasSSE2 = false;
 bool CRYPTOPP_SECTION_INIT g_hasSSSE3 = false;
 bool CRYPTOPP_SECTION_INIT g_hasSSE41 = false;
 bool CRYPTOPP_SECTION_INIT g_hasSSE42 = false;
+bool CRYPTOPP_SECTION_INIT g_hasAVX = false;
+bool CRYPTOPP_SECTION_INIT g_hasAVX2 = false;
 bool CRYPTOPP_SECTION_INIT g_hasAESNI = false;
 bool CRYPTOPP_SECTION_INIT g_hasCLMUL = false;
 bool CRYPTOPP_SECTION_INIT g_hasADX = false;
@@ -245,12 +311,38 @@ void DetectX86Features()
 	g_hasAESNI = g_hasSSE2 && ((cpuid1[2] & (1<<25)) != 0);
 	g_hasCLMUL = g_hasSSE2 && ((cpuid1[2] & (1<< 1)) != 0);
 
+	// AVX is similar to SSE, but check both bits 27 (SSE) and 28 (AVX).
+	// https://software.intel.com/en-us/blogs/2011/04/14/is-avx-enabled
+	CRYPTOPP_CONSTANT(YMM_FLAG = (3 <<  1))
+	CRYPTOPP_CONSTANT(AVX_FLAG = (3 << 27))
+	if ((cpuid1[2] & AVX_FLAG) == AVX_FLAG)
+	{
+#if defined(__GNUC__)
+		// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=71659 and
+		// http://www.agner.org/optimize/vectorclass/read.php?i=65
+		word32 a=0, d=0;
+		__asm __volatile
+		(
+			// GCC 4.1/Binutils 2.17 cannot consume xgetbv
+			// "xgetbv" : "=a"(a), "=d"(d) : "c"(0) :
+			".byte 0x0f, 0x01, 0xd0"   "\n\t"
+			: "=a"(a), "=d"(d) : "c"(0) :
+		);
+		word64 xcr0 = a | static_cast<word64>(d) << 32;
+		g_hasAVX = (xcr0 & YMM_FLAG) == YMM_FLAG;
+#else
+		word64 xcr0 = _xgetbv(0);
+		g_hasAVX = (xcr0 & YMM_FLAG) == YMM_FLAG;
+#endif
+	}
+
 	if (IsIntel(cpuid0))
 	{
 		CRYPTOPP_CONSTANT(RDRAND_FLAG = (1 << 30))
 		CRYPTOPP_CONSTANT(RDSEED_FLAG = (1 << 18))
 		CRYPTOPP_CONSTANT(   ADX_FLAG = (1 << 19))
 		CRYPTOPP_CONSTANT(   SHA_FLAG = (1 << 29))
+		CRYPTOPP_CONSTANT(  AVX2_FLAG = (1 <<  5))
 
 		g_isP4 = ((cpuid1[0] >> 8) & 0xf) == 0xf;
 		g_cacheLineSize = 8 * GETBYTE(cpuid1[1], 1);
@@ -263,6 +355,7 @@ void DetectX86Features()
 				g_hasRDSEED = (cpuid2[1] /*EBX*/ & RDSEED_FLAG) != 0;
 				g_hasADX = (cpuid2[1] /*EBX*/ & ADX_FLAG) != 0;
 				g_hasSHA = (cpuid2[1] /*EBX*/ & SHA_FLAG) != 0;
+				g_hasAVX2 = (cpuid2[1] /*EBX*/ & AVX2_FLAG) != 0;
 			}
 		}
 	}
@@ -272,6 +365,7 @@ void DetectX86Features()
 		CRYPTOPP_CONSTANT(RDSEED_FLAG = (1 << 18))
 		CRYPTOPP_CONSTANT(   ADX_FLAG = (1 << 19))
 		CRYPTOPP_CONSTANT(   SHA_FLAG = (1 << 29))
+		CRYPTOPP_CONSTANT(  AVX2_FLAG = (1 <<  5))
 
 		CpuId(0x80000005, 0, cpuid2);
 		g_cacheLineSize = GETBYTE(cpuid2[2], 0);
@@ -284,6 +378,7 @@ void DetectX86Features()
 				g_hasRDSEED = (cpuid2[1] /*EBX*/ & RDSEED_FLAG) != 0;
 				g_hasADX = (cpuid2[1] /*EBX*/ & ADX_FLAG) != 0;
 				g_hasSHA = (cpuid2[1] /*EBX*/ & SHA_FLAG) != 0;
+				g_hasAVX2 = (cpuid2[1] /*EBX*/ & AVX2_FLAG) != 0;
 			}
 		}
 	}
@@ -300,11 +395,11 @@ void DetectX86Features()
 		{
 			// Extended features available
 			CpuId(0xC0000001, 0, cpuid2);
-			g_hasPadlockRNG  = (cpuid2[3] /*EDX*/ & RNG_FLAGS) != 0;
-			g_hasPadlockACE  = (cpuid2[3] /*EDX*/ & ACE_FLAGS) != 0;
-			g_hasPadlockACE2 = (cpuid2[3] /*EDX*/ & ACE2_FLAGS) != 0;
-			g_hasPadlockPHE  = (cpuid2[3] /*EDX*/ & PHE_FLAGS) != 0;
-			g_hasPadlockPMM  = (cpuid2[3] /*EDX*/ & PMM_FLAGS) != 0;
+			g_hasPadlockRNG  = (cpuid2[3] /*EDX*/ & RNG_FLAGS) == RNG_FLAGS;
+			g_hasPadlockACE  = (cpuid2[3] /*EDX*/ & ACE_FLAGS) == ACE_FLAGS;
+			g_hasPadlockACE2 = (cpuid2[3] /*EDX*/ & ACE2_FLAGS) == ACE2_FLAGS;
+			g_hasPadlockPHE  = (cpuid2[3] /*EDX*/ & PHE_FLAGS) == PHE_FLAGS;
+			g_hasPadlockPMM  = (cpuid2[3] /*EDX*/ & PMM_FLAGS) == PMM_FLAGS;
 		}
 	}
 
@@ -319,12 +414,17 @@ void DetectX86Features()
 #elif (CRYPTOPP_BOOL_ARM32 || CRYPTOPP_BOOL_ARM64)
 
 bool CRYPTOPP_SECTION_INIT g_ArmDetectionDone = false;
+bool CRYPTOPP_SECTION_INIT g_hasARMv7 = false;
 bool CRYPTOPP_SECTION_INIT g_hasNEON = false;
 bool CRYPTOPP_SECTION_INIT g_hasPMULL = false;
 bool CRYPTOPP_SECTION_INIT g_hasCRC32 = false;
 bool CRYPTOPP_SECTION_INIT g_hasAES = false;
 bool CRYPTOPP_SECTION_INIT g_hasSHA1 = false;
 bool CRYPTOPP_SECTION_INIT g_hasSHA2 = false;
+bool CRYPTOPP_SECTION_INIT g_hasSHA512 = false;
+bool CRYPTOPP_SECTION_INIT g_hasSHA3 = false;
+bool CRYPTOPP_SECTION_INIT g_hasSM3 = false;
+bool CRYPTOPP_SECTION_INIT g_hasSM4 = false;
 word32 CRYPTOPP_SECTION_INIT g_cacheLineSize = CRYPTOPP_L1_CACHE_LINE_SIZE;
 
 // ARM does not have an unprivliged equivalent to CPUID on IA-32. We have to jump through some
@@ -340,13 +440,23 @@ word32 CRYPTOPP_SECTION_INIT g_cacheLineSize = CRYPTOPP_L1_CACHE_LINE_SIZE;
 //   http://stackoverflow.com/a/11197770/608639 and
 //   http://gist.github.com/erkanyildiz/390a480f27e86f8cd6ba
 
+extern bool CPU_ProbeARMv7();
 extern bool CPU_ProbeNEON();
 extern bool CPU_ProbeCRC32();
 extern bool CPU_ProbeAES();
 extern bool CPU_ProbeSHA1();
 extern bool CPU_ProbeSHA2();
+extern bool CPU_ProbeSHA512();
+extern bool CPU_ProbeSHA3();
+extern bool CPU_ProbeSM3();
+extern bool CPU_ProbeSM4();
 extern bool CPU_ProbePMULL();
 
+#if CRYPTOPP_GETAUXV_AVAILABLE
+
+#ifndef HWCAP_ARMv7
+# define HWCAP_ARMv7 (1 << 29)
+#endif
 #ifndef HWCAP_ASIMD
 # define HWCAP_ASIMD (1 << 1)
 #endif
@@ -383,6 +493,40 @@ extern bool CPU_ProbePMULL();
 #ifndef HWCAP2_SHA2
 # define HWCAP2_SHA2 (1 << 3)
 #endif
+// https://github.com/torvalds/linux/blob/master/arch/arm64/include/uapi/asm/hwcap.h
+#ifndef HWCAP_SHA3
+# define HWCAP_SHA3 (1 << 17)
+#endif
+#ifndef HWCAP_SM3
+# define HWCAP_SM3 (1 << 18)
+#endif
+#ifndef HWCAP_SM4
+# define HWCAP_SM4 (1 << 19)
+#endif
+#ifndef HWCAP_SHA512
+# define HWCAP_SHA512 (1 << 21)
+#endif
+
+#endif  // CRYPTOPP_GETAUXV_AVAILABLE
+
+inline bool CPU_QueryARMv7()
+{
+#if defined(__aarch32__) || defined(__aarch64__)
+	// ARMv7 or above
+	return true;
+#elif defined(__ANDROID__) && defined(__arm__)
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_ARMv7) != 0))
+		return true;
+#elif defined(__linux__) && defined(__arm__)
+	if ((getauxval(AT_HWCAP) & HWCAP_ARMv7) != 0)
+		return true;
+#elif defined(__APPLE__) && defined(__arm__)
+	// Apple hardware is ARMv7 or above.
+	return true;
+#endif
+	return false;
+}
 
 inline bool CPU_QueryNEON()
 {
@@ -391,7 +535,7 @@ inline bool CPU_QueryNEON()
 		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_ASIMD) != 0))
 		return true;
 #elif defined(__ANDROID__) && defined(__arm__)
-	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM)  != 0) &&
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
 		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_NEON) != 0))
 		return true;
 #elif defined(__linux__) && defined(__aarch64__)
@@ -417,7 +561,7 @@ inline bool CPU_QueryCRC32()
 		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_CRC32) != 0))
 		return true;
 #elif defined(__ANDROID__) && defined(__aarch32__)
-	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM)  != 0) &&
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
 		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_CRC32) != 0))
 		return true;
 #elif defined(__linux__) && defined(__aarch64__)
@@ -436,7 +580,7 @@ inline bool CPU_QueryCRC32()
 inline bool CPU_QueryPMULL()
 {
 #if defined(__ANDROID__) && defined(__aarch64__)
-	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64)  != 0) &&
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64) != 0) &&
 		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_PMULL) != 0))
 		return true;
 #elif defined(__ANDROID__) && defined(__aarch32__)
@@ -459,11 +603,11 @@ inline bool CPU_QueryPMULL()
 inline bool CPU_QueryAES()
 {
 #if defined(__ANDROID__) && defined(__aarch64__)
-	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64)  != 0) &&
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64) != 0) &&
 		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_AES) != 0))
 		return true;
 #elif defined(__ANDROID__) && defined(__aarch32__)
-	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM)  != 0) &&
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
 		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_AES) != 0))
 		return true;
 #elif defined(__linux__) && defined(__aarch64__)
@@ -473,20 +617,9 @@ inline bool CPU_QueryAES()
 	if ((getauxval(AT_HWCAP2) & HWCAP2_AES) != 0)
 		return true;
 #elif defined(__APPLE__) && defined(__aarch64__)
-	// http://stackoverflow.com/questions/45637888/how-to-determine-armv8-features-at-runtime-on-ios
-	struct utsname systemInfo;
-	systemInfo.machine[0] = '\0';
-	uname(&systemInfo);
-
-	// The machine strings below are known ARM8 devices
-	std::string machine(systemInfo.machine);
-	if (machine.substr(0, 7) == "iPhone6" || machine.substr(0, 7) == "iPhone7" ||
-		machine.substr(0, 7) == "iPhone8" || machine.substr(0, 7) == "iPhone9" ||
-		machine.substr(0, 5) == "iPad4" || machine.substr(0, 5) == "iPad5" ||
-		machine.substr(0, 5) == "iPad6" || machine.substr(0, 5) == "iPad7")
-	{
-		return true;
-	}
+	unsigned int device, version;
+	GetAppleMachineInfo(device, version);
+	return IsAppleMachineARMv8(device, version);
 #endif
 	return false;
 }
@@ -508,20 +641,9 @@ inline bool CPU_QuerySHA1()
 	if ((getauxval(AT_HWCAP2) & HWCAP2_SHA1) != 0)
 		return true;
 #elif defined(__APPLE__) && defined(__aarch64__)
-	// http://stackoverflow.com/questions/45637888/how-to-determine-armv8-features-at-runtime-on-ios
-	struct utsname systemInfo;
-	systemInfo.machine[0] = '\0';
-	uname(&systemInfo);
-
-	// The machine strings below are known ARM8 devices
-	std::string machine(systemInfo.machine);
-	if (machine.substr(0, 7) == "iPhone6" || machine.substr(0, 7) == "iPhone7" ||
-		machine.substr(0, 7) == "iPhone8" || machine.substr(0, 7) == "iPhone9" ||
-		machine.substr(0, 5) == "iPad4" || machine.substr(0, 5) == "iPad5" ||
-		machine.substr(0, 5) == "iPad6" || machine.substr(0, 5) == "iPad7")
-	{
-		return true;
-	}
+	unsigned int device, version;
+	GetAppleMachineInfo(device, version);
+	return IsAppleMachineARMv8(device, version);
 #endif
 	return false;
 }
@@ -529,7 +651,7 @@ inline bool CPU_QuerySHA1()
 inline bool CPU_QuerySHA2()
 {
 #if defined(__ANDROID__) && defined(__aarch64__)
-	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64)  != 0) &&
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64) != 0) &&
 		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_SHA2) != 0))
 		return true;
 #elif defined(__ANDROID__) && defined(__aarch32__)
@@ -543,20 +665,109 @@ inline bool CPU_QuerySHA2()
 	if ((getauxval(AT_HWCAP2) & HWCAP2_SHA2) != 0)
 		return true;
 #elif defined(__APPLE__) && defined(__aarch64__)
-	// http://stackoverflow.com/questions/45637888/how-to-determine-armv8-features-at-runtime-on-ios
-	struct utsname systemInfo;
-	systemInfo.machine[0] = '\0';
-	uname(&systemInfo);
+	unsigned int device, version;
+	GetAppleMachineInfo(device, version);
+	return IsAppleMachineARMv8(device, version);
+#endif
+	return false;
+}
 
-	// The machine strings below are known ARM8 devices
-	std::string machine(systemInfo.machine);
-	if (machine.substr(0, 7) == "iPhone6" || machine.substr(0, 7) == "iPhone7" ||
-		machine.substr(0, 7) == "iPhone8" || machine.substr(0, 7) == "iPhone9" ||
-		machine.substr(0, 5) == "iPad4" || machine.substr(0, 5) == "iPad5" ||
-		machine.substr(0, 5) == "iPad6" || machine.substr(0, 5) == "iPad7")
-	{
+inline bool CPU_QuerySHA512()
+{
+// Some ARMv8.4 features are disabled at the moment
+#if defined(__ANDROID__) && defined(__aarch64__) && 0
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_SHA512) != 0))
 		return true;
-	}
+#elif defined(__ANDROID__) && defined(__aarch32__) && 0
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_SHA512) != 0))
+		return true;
+#elif defined(__linux__) && defined(__aarch64__)
+	if ((getauxval(AT_HWCAP) & HWCAP_SHA512) != 0)
+		return true;
+#elif defined(__linux__) && defined(__aarch32__)
+	if ((getauxval(AT_HWCAP2) & HWCAP2_SHA512) != 0)
+		return true;
+#elif defined(__APPLE__) && defined(__aarch64__) && 0
+	unsigned int device, version;
+	GetAppleMachineInfo(device, version);
+	return IsAppleMachineARMv84(device, version);
+#endif
+	return false;
+}
+
+inline bool CPU_QuerySHA3()
+{
+// Some ARMv8.4 features are disabled at the moment
+#if defined(__ANDROID__) && defined(__aarch64__) && 0
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_SHA3) != 0))
+		return true;
+#elif defined(__ANDROID__) && defined(__aarch32__) && 0
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_SHA3) != 0))
+		return true;
+#elif defined(__linux__) && defined(__aarch64__)
+	if ((getauxval(AT_HWCAP) & HWCAP_SHA3) != 0)
+		return true;
+#elif defined(__linux__) && defined(__aarch32__)
+	if ((getauxval(AT_HWCAP2) & HWCAP2_SHA3) != 0)
+		return true;
+#elif defined(__APPLE__) && defined(__aarch64__) && 0
+	unsigned int device, version;
+	GetAppleMachineInfo(device, version);
+	return IsAppleMachineARMv84(device, version);
+#endif
+	return false;
+}
+
+inline bool CPU_QuerySM3()
+{
+// Some ARMv8.4 features are disabled at the moment
+#if defined(__ANDROID__) && defined(__aarch64__) && 0
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_SM3) != 0))
+		return true;
+#elif defined(__ANDROID__) && defined(__aarch32__) && 0
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_SM3) != 0))
+		return true;
+#elif defined(__linux__) && defined(__aarch64__)
+	if ((getauxval(AT_HWCAP) & HWCAP_SM3) != 0)
+		return true;
+#elif defined(__linux__) && defined(__aarch32__)
+	if ((getauxval(AT_HWCAP2) & HWCAP2_SM3) != 0)
+		return true;
+#elif defined(__APPLE__) && defined(__aarch64__) && 0
+	unsigned int device, version;
+	GetAppleMachineInfo(device, version);
+	return IsAppleMachineARMv84(device, version);
+#endif
+	return false;
+}
+
+inline bool CPU_QuerySM4()
+{
+// Some ARMv8.4 features are disabled at the moment
+#if defined(__ANDROID__) && defined(__aarch64__) && 0
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM64_FEATURE_SM4) != 0))
+		return true;
+#elif defined(__ANDROID__) && defined(__aarch32__) && 0
+	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
+		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_SM4) != 0))
+		return true;
+#elif defined(__linux__) && defined(__aarch64__)
+	if ((getauxval(AT_HWCAP) & HWCAP_SM4) != 0)
+		return true;
+#elif defined(__linux__) && defined(__aarch32__)
+	if ((getauxval(AT_HWCAP2) & HWCAP2_SM4) != 0)
+		return true;
+#elif defined(__APPLE__) && defined(__aarch64__) && 0
+	unsigned int device, version;
+	GetAppleMachineInfo(device, version);
+	return IsAppleMachineARMv84(device, version);
 #endif
 	return false;
 }
@@ -565,12 +776,17 @@ void DetectArmFeatures()
 {
 	// The CPU_ProbeXXX's return false for OSes which
 	//   can't tolerate SIGILL-based probes
-	g_hasNEON  = CPU_QueryNEON() || CPU_ProbeNEON();
+	g_hasARMv7 = CPU_QueryARMv7() || CPU_ProbeARMv7();
+	g_hasNEON = CPU_QueryNEON() || CPU_ProbeNEON();
 	g_hasCRC32 = CPU_QueryCRC32() || CPU_ProbeCRC32();
 	g_hasPMULL = CPU_QueryPMULL() || CPU_ProbePMULL();
 	g_hasAES  = CPU_QueryAES() || CPU_ProbeAES();
 	g_hasSHA1 = CPU_QuerySHA1() || CPU_ProbeSHA1();
 	g_hasSHA2 = CPU_QuerySHA2() || CPU_ProbeSHA2();
+	g_hasSHA512 = CPU_QuerySHA512(); // || CPU_ProbeSHA512();
+	g_hasSHA3 = CPU_QuerySHA3(); // || CPU_ProbeSHA3();
+	g_hasSM3 = CPU_QuerySM3(); // || CPU_ProbeSM3();
+	g_hasSM4 = CPU_QuerySM4(); // || CPU_ProbeSM4();
 
 #if defined(__linux__) && defined(_SC_LEVEL1_DCACHE_LINESIZE)
 	// Glibc does not implement on some platforms. The runtime returns 0 instead of error.
@@ -625,17 +841,9 @@ inline bool CPU_QueryAltivec()
 	if (__power_vmx() != 0)
 		return true;
 #elif defined(__APPLE__) && defined(__POWERPC__)
-	// http://stackoverflow.com/questions/45637888/how-to-determine-armv8-features-at-runtime-on-ios
-	struct utsname systemInfo;
-	systemInfo.machine[0] = '\0';
-	uname(&systemInfo);
-
-	// The machine strings below are known PPC machines
-	std::string machine(systemInfo.machine);
-	if (machine.substr(0, 15) == "Power Macintosh")
-	{
-		return true;
-	}
+	unsigned int device, version;
+	GetAppleMachineInfo(device, version);
+	return device == PowerMac;
 #endif
 	return false;
 }

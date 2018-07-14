@@ -95,6 +95,7 @@
       <DisableSpecificWarnings>4231; 4251; 4275; 4355; 4505</DisableSpecificWarnings>
       <PrecompiledHeader />
       <PrecompiledHeadeFile />
+      <AdditionalOptions>$(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <ErrorReporting>NoErrorReport</ErrorReporting>
@@ -231,6 +232,7 @@
     <None Include="TestVectors\camellia.txt" />
     <None Include="TestVectors\ccm.txt" />
     <None Include="TestVectors\chacha.txt" />
+    <None Include="TestVectors\cham.txt" />
     <None Include="TestVectors\cmac.txt" />
     <None Include="TestVectors\dlies.txt" />
     <None Include="TestVectors\dsa.txt" />
@@ -239,13 +241,17 @@
     <None Include="TestVectors\eax.txt" />
     <None Include="TestVectors\esign.txt" />
     <None Include="TestVectors\gcm.txt" />
+    <None Include="TestVectors\hc128.txt" />
+    <None Include="TestVectors\hc256.txt" />
     <None Include="TestVectors\hkdf.txt" />
     <None Include="TestVectors\hmac.txt" />
+    <None Include="TestVectors\lea.txt" />
     <None Include="TestVectors\kalyna.txt" />
     <None Include="TestVectors\mars.txt" />
     <None Include="TestVectors\nr.txt" />
     <None Include="TestVectors\panama.txt" />
     <None Include="TestVectors\Readme.txt" />
+    <None Include="TestVectors\rabbit.txt" />
     <None Include="TestVectors\rsa_oaep.txt" />
     <None Include="TestVectors\rsa_pkcs1_1_5.txt" />
     <None Include="TestVectors\rsa_pss.txt" />

@@ -75,8 +75,8 @@
 // this file. At the moment it should only affect std::uncaught_exceptions.
 // #define CRYPTOPP_NO_CXX17 1
 
-// Define this to allow unaligned data access. If you experience a break with
-// GCC at -O3, you should immediately suspect unaligned data accesses.
+// CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS is no longer honored. It
+// was removed at https://github.com/weidai11/cryptopp/issues/682
 // #define CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS 1
 
 // ***************** Less Important Settings ***************
@@ -538,9 +538,9 @@ NAMESPACE_END
 	#define CRYPTOPP_SSE42_AVAILABLE 1
 #endif
 
-// Couple to CRYPTOPP_DISABLE_AES, but use CRYPTOPP_CLMUL_AVAILABLE so we can selectively
+// Couple to CRYPTOPP_DISABLE_AESNI, but use CRYPTOPP_CLMUL_AVAILABLE so we can selectively
 //  disable for misbehaving platofrms and compilers, like Solaris or some Clang.
-#if defined(CRYPTOPP_DISABLE_AES)
+#if defined(CRYPTOPP_DISABLE_AESNI)
 	#define CRYPTOPP_DISABLE_CLMUL 1
 #endif
 
@@ -553,7 +553,7 @@ NAMESPACE_END
 #endif
 
 // Requires Sun Studio 12.3 (SunCC 0x5120)
-#if !defined(CRYPTOPP_DISABLE_ASM) && !defined(CRYPTOPP_DISABLE_AES) && defined(CRYPTOPP_SSE42_AVAILABLE) && \
+#if !defined(CRYPTOPP_DISABLE_ASM) && !defined(CRYPTOPP_DISABLE_AESNI) && defined(CRYPTOPP_SSE42_AVAILABLE) && \
 	(defined(__AES__) || (_MSC_FULL_VER >= 150030729) || (__SUNPRO_CC >= 0x5120) || \
 	(CRYPTOPP_GCC_VERSION >= 40300) || (__INTEL_COMPILER >= 1110) || \
 	(CRYPTOPP_LLVM_CLANG_VERSION >= 30200) || (CRYPTOPP_APPLE_CLANG_VERSION >= 40300))
@@ -562,7 +562,7 @@ NAMESPACE_END
 
 // Guessing at SHA for SunCC. Its not in Sun Studio 12.6. Also see
 //   http://stackoverflow.com/questions/45872180/which-xarch-for-sha-extensions-on-solaris
-#if !defined(CRYPTOPP_DISABLE_ASM) && !defined(CRYPTOPP_DISABLE_SHA) && defined(CRYPTOPP_SSE42_AVAILABLE) && \
+#if !defined(CRYPTOPP_DISABLE_ASM) && !defined(CRYPTOPP_DISABLE_SHANI) && defined(CRYPTOPP_SSE42_AVAILABLE) && \
 	(defined(__SHA__) || (CRYPTOPP_MSC_VERSION >= 1900) || (__SUNPRO_CC >= 0x5160) || \
 	(CRYPTOPP_GCC_VERSION >= 40900) || (__INTEL_COMPILER >= 1300) || \
 	(CRYPTOPP_LLVM_CLANG_VERSION >= 30400) || (CRYPTOPP_APPLE_CLANG_VERSION >= 50100))
@@ -649,6 +649,16 @@ NAMESPACE_END
 // to compile with "fatal error: 'arm_acle.h' file not found"
 #if defined(__ANDROID__) || defined(ANDROID) || defined(__APPLE__)
 # undef CRYPTOPP_ARM_ACLE_AVAILABLE
+#endif
+
+// Cryptogams offers an ARM asm AES implementation. Crypto++ does
+// not provide an ARM implementation. The Cryptogams implementation
+// is about 2x faster than C/C++. Define this to use the Cryptogams
+// AES implementation on GNU Linux systems. When defined, Crypto++
+// will use aes-armv4.S. LLVM miscompiles aes-armv4.S so disable
+// under Clang. See https://bugs.llvm.org/show_bug.cgi?id=38133.
+#if !defined(CRYPTOPP_DISABLE_ASM) && defined(__arm__) && defined(__GNUC__) && !defined(__clang__)
+# define CRYPTOGAMS_ARM_AES 1
 #endif
 
 #endif  // ARM32, ARM64

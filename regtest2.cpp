@@ -12,6 +12,7 @@
 #include "seal.h"
 #include "ttmac.h"
 #include "aria.h"
+#include "hight.h"
 #include "camellia.h"
 #include "shacal2.h"
 #include "tea.h"
@@ -21,6 +22,9 @@
 #include "vmac.h"
 #include "tiger.h"
 #include "sosemanuk.h"
+#include "rabbit.h"
+#include "hc128.h"
+#include "hc256.h"
 #include "arc4.h"
 #include "ccm.h"
 #include "gcm.h"
@@ -32,6 +36,9 @@
 #include "mars.h"
 #include "kalyna.h"
 #include "threefish.h"
+#include "cham.h"
+#include "lea.h"
+#include "simeck.h"
 #include "simon.h"
 #include "speck.h"
 #include "sm4.h"
@@ -97,6 +104,8 @@ void RegisterFactories2()
 	RegisterSymmetricCipherDefaultFactories<SEAL<> >();
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SHACAL2> >();
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<ARIA> >();
+	RegisterSymmetricCipherDefaultFactories<ECB_Mode<HIGHT> >();
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<HIGHT> >();
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<Camellia> >();
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<TEA> >();
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<XTEA> >();
@@ -109,10 +118,12 @@ void RegisterFactories2()
 	RegisterSymmetricCipherDefaultFactories<CTR_Mode<AES> >();
 	RegisterSymmetricCipherDefaultFactories<Salsa20>();
 	RegisterSymmetricCipherDefaultFactories<XSalsa20>();
-	RegisterSymmetricCipherDefaultFactories<ChaCha8>();
-	RegisterSymmetricCipherDefaultFactories<ChaCha12>();
-	RegisterSymmetricCipherDefaultFactories<ChaCha20>();
+	RegisterSymmetricCipherDefaultFactories<ChaCha>();
 	RegisterSymmetricCipherDefaultFactories<Sosemanuk>();
+	RegisterSymmetricCipherDefaultFactories<Rabbit>();
+	RegisterSymmetricCipherDefaultFactories<RabbitWithIV>();
+	RegisterSymmetricCipherDefaultFactories<HC128>();
+	RegisterSymmetricCipherDefaultFactories<HC256>();
 	RegisterSymmetricCipherDefaultFactories<Weak::MARC4>();
 	RegisterSymmetricCipherDefaultFactories<WAKE_OFB<LittleEndian> >();
 	RegisterSymmetricCipherDefaultFactories<WAKE_OFB<BigEndian> >();
@@ -163,12 +174,26 @@ void RegisterFactories2()
 	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Threefish512> >();  // Benchmarks
 	RegisterSymmetricCipherDefaultFactories<CTR_Mode<Threefish1024> >(); // Benchmarks
 
+	RegisterSymmetricCipherDefaultFactories<ECB_Mode<CHAM64> >();  // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<ECB_Mode<CHAM128> >(); // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<CHAM64> >();  // Benchmarks
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<CHAM128> >(); // Benchmarks
+
+	RegisterSymmetricCipherDefaultFactories<ECB_Mode<LEA> >(); // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CBC_Mode<LEA> >(); // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<LEA> >(); // Benchmarks
+
+	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SIMECK32> >(); // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SIMECK32> >(); // Benchmarks
+	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SIMECK64> >(); // Test Vectors
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SIMECK64> >(); // Benchmarks
+
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SIMON64> >();  // Test Vectors
 	RegisterSymmetricCipherDefaultFactories<CBC_Mode<SIMON64> >();  // Test Vectors
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SIMON128> >(); // Test Vectors
 	RegisterSymmetricCipherDefaultFactories<CBC_Mode<SIMON128> >(); // Test Vectors
 	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SIMON64> >();  // Benchmarks
-	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SIMON128> >();  // Benchmarks
+	RegisterSymmetricCipherDefaultFactories<CTR_Mode<SIMON128> >(); // Benchmarks
 
 	RegisterSymmetricCipherDefaultFactories<ECB_Mode<SPECK64> >();  // Test Vectors
 	RegisterSymmetricCipherDefaultFactories<CBC_Mode<SPECK64> >();  // Test Vectors
