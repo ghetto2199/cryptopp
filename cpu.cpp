@@ -21,14 +21,6 @@
 # include <unistd.h>
 #endif
 
-//#if CRYPTOPP_BOOL_X64 || CRYPTOPP_BOOL_X32 || CRYPTOPP_BOOL_X86
-//# if defined(_MSC_VER)
-//#  include <intrin.h>
-//# else
-//#  include <immintrin.h>
-//# endif
-//#endif
-
 // Capability queries, requires Glibc 2.16, http://lwn.net/Articles/519085/
 // CRYPTOPP_GLIBC_VERSION not used because config.h is missing <feature.h>
 #if (((__GLIBC__ * 100) + __GLIBC_MINOR__) >= 216)
@@ -62,6 +54,11 @@ unsigned long int getauxval(unsigned long int) { return 0; }
 #ifdef CRYPTOPP_GNU_STYLE_INLINE_ASSEMBLY
 # include <signal.h>
 # include <setjmp.h>
+#endif
+
+// Visual Studio 2008 and below is missing _xgetbv. See x64dll.asm for the body.
+#if defined(_MSC_VER) && defined(_M_X64)
+extern "C" unsigned long long __fastcall ExtendedControlRegister(unsigned int);
 #endif
 
 ANONYMOUS_NAMESPACE_BEGIN
@@ -317,18 +314,43 @@ void DetectX86Features()
 	CRYPTOPP_CONSTANT(AVX_FLAG = (3 << 27))
 	if ((cpuid1[2] & AVX_FLAG) == AVX_FLAG)
 	{
-#if defined(__GNUC__)
+// GCC 4.1/Binutils 2.17 cannot consume xgetbv
+#if defined(__GNUC__) || defined(__SUNPRO_CC) || defined(__BORLANDC__)
 		// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=71659 and
 		// http://www.agner.org/optimize/vectorclass/read.php?i=65
 		word32 a=0, d=0;
 		__asm __volatile
 		(
-			// GCC 4.1/Binutils 2.17 cannot consume xgetbv
 			// "xgetbv" : "=a"(a), "=d"(d) : "c"(0) :
 			".byte 0x0f, 0x01, 0xd0"   "\n\t"
 			: "=a"(a), "=d"(d) : "c"(0) :
 		);
 		word64 xcr0 = a | static_cast<word64>(d) << 32;
+		g_hasAVX = (xcr0 & YMM_FLAG) == YMM_FLAG;
+
+// Visual Studio 2008 and below lack xgetbv
+#elif defined(_MSC_VER) && defined(_M_IX86)
+		word32 a=0, d=0;
+		__asm {
+			push eax
+			push edx
+			push ecx
+			mov ecx, 0
+			_emit 0x0f
+			_emit 0x01
+			_emit 0xd0
+			mov a, eax
+			mov d, edx
+			pop ecx
+			pop edx
+			pop eax
+		}
+		word64 xcr0 = a | static_cast<word64>(d) << 32;
+		g_hasAVX = (xcr0 & YMM_FLAG) == YMM_FLAG;
+
+// Visual Studio 2008 and below lack xgetbv
+#elif defined(_MSC_VER) && defined(_M_X64)
+		word64 xcr0 = ExtendedControlRegister(0);
 		g_hasAVX = (xcr0 & YMM_FLAG) == YMM_FLAG;
 #else
 		word64 xcr0 = _xgetbv(0);
@@ -452,8 +474,7 @@ extern bool CPU_ProbeSM3();
 extern bool CPU_ProbeSM4();
 extern bool CPU_ProbePMULL();
 
-#if CRYPTOPP_GETAUXV_AVAILABLE
-
+// https://github.com/torvalds/linux/blob/master/arch/arm64/include/uapi/asm/hwcap.h
 #ifndef HWCAP_ARMv7
 # define HWCAP_ARMv7 (1 << 29)
 #endif
@@ -493,7 +514,6 @@ extern bool CPU_ProbePMULL();
 #ifndef HWCAP2_SHA2
 # define HWCAP2_SHA2 (1 << 3)
 #endif
-// https://github.com/torvalds/linux/blob/master/arch/arm64/include/uapi/asm/hwcap.h
 #ifndef HWCAP_SHA3
 # define HWCAP_SHA3 (1 << 17)
 #endif
@@ -506,8 +526,6 @@ extern bool CPU_ProbePMULL();
 #ifndef HWCAP_SHA512
 # define HWCAP_SHA512 (1 << 21)
 #endif
-
-#endif  // CRYPTOPP_GETAUXV_AVAILABLE
 
 inline bool CPU_QueryARMv7()
 {
@@ -808,6 +826,7 @@ bool CRYPTOPP_SECTION_INIT g_hasAltivec = false;
 bool CRYPTOPP_SECTION_INIT g_hasPower7 = false;
 bool CRYPTOPP_SECTION_INIT g_hasPower8 = false;
 bool CRYPTOPP_SECTION_INIT g_hasAES = false;
+bool CRYPTOPP_SECTION_INIT g_hasPMULL = false;
 bool CRYPTOPP_SECTION_INIT g_hasSHA256 = false;
 bool CRYPTOPP_SECTION_INIT g_hasSHA512 = false;
 word32 CRYPTOPP_SECTION_INIT g_cacheLineSize = CRYPTOPP_L1_CACHE_LINE_SIZE;
@@ -816,6 +835,7 @@ extern bool CPU_ProbeAltivec();
 extern bool CPU_ProbePower7();
 extern bool CPU_ProbePower8();
 extern bool CPU_ProbeAES();
+extern bool CPU_ProbePMULL();
 extern bool CPU_ProbeSHA256();
 extern bool CPU_ProbeSHA512();
 
@@ -888,6 +908,20 @@ inline bool CPU_QueryAES()
 	return false;
 }
 
+inline bool CPU_QueryPMULL()
+{
+	// Power8 and ISA 2.07 provide in-core crypto. Glibc
+	// 2.24 or higher is required for PPC_FEATURE2_VEC_CRYPTO.
+#if defined(__linux__)
+	if ((getauxval(AT_HWCAP2) & PPC_FEATURE2_VEC_CRYPTO) != 0)
+		return true;
+#elif defined(_AIX)
+	if (__power_8_andup() != 0)
+		return true;
+#endif
+	return false;
+}
+
 inline bool CPU_QuerySHA256()
 {
 	// Power8 and ISA 2.07 provide in-core crypto. Glibc
@@ -922,7 +956,7 @@ void DetectPowerpcFeatures()
 	g_hasAltivec  = CPU_QueryAltivec() || CPU_ProbeAltivec();
 	g_hasPower7 = CPU_QueryPower7() || CPU_ProbePower7();
 	g_hasPower8 = CPU_QueryPower8() || CPU_ProbePower8();
-	//g_hasPMULL = CPU_QueryPMULL() || CPU_ProbePMULL();
+	g_hasPMULL = CPU_QueryPMULL() || CPU_ProbePMULL();
 	g_hasAES  = CPU_QueryAES() || CPU_ProbeAES();
 	g_hasSHA256 = CPU_QuerySHA256() || CPU_ProbeSHA256();
 	g_hasSHA512 = CPU_QuerySHA512() || CPU_ProbeSHA512();

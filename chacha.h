@@ -22,7 +22,7 @@ NAMESPACE_BEGIN(CryptoPP)
 /// \since Crypto++ 5.6.4
 struct ChaCha_Info : public VariableKeyLength<32, 16, 32, 16, SimpleKeyingInterface::UNIQUE_IV, 8>
 {
-	CRYPTOPP_STATIC_CONSTEXPR const char* StaticAlgorithmName() {
+	static const char* StaticAlgorithmName() {
 		return "ChaCha";
 	}
 };
@@ -32,7 +32,6 @@ struct ChaCha_Info : public VariableKeyLength<32, 16, 32, 16, SimpleKeyingInterf
 class CRYPTOPP_NO_VTABLE ChaCha_Policy : public AdditiveCipherConcretePolicy<word32, 16>
 {
 protected:
-
 	void CipherSetKey(const NameValuePairs &params, const byte *key, size_t length);
 	void OperateKeystream(KeystreamOperation operation, byte *output, const byte *input, size_t iterationCount);
 	void CipherResynchronize(byte *keystreamBuffer, const byte *IV, size_t length);
@@ -46,14 +45,16 @@ protected:
 };
 
 /// \brief ChaCha stream cipher
-/// \sa <a href="http://cr.yp.to/chacha/chacha-20080128.pdf">ChaCha, a variant of Salsa20</a> (2008.01.28).
-/// \details Bernstein and ECRYPT's ChaCha is _slightly_ different from the TLS working group's implementation for
-///   cipher suites <tt>TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256</tt>,
-///   <tt>TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256</tt>, and <tt>TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256</tt>.
+/// \details Bernstein and ECRYPT's ChaCha is _slightly_ different from the TLS working
+///   group's implementation for cipher suites
+///   <tt>TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256</tt>,
+///   <tt>TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256</tt>, and
+///   <tt>TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256</tt>.
+/// \sa <a href="http://cr.yp.to/chacha/chacha-20080208.pdf">ChaCha, a variant of Salsa20</a> (2008.01.28).
 /// \since Crypto++ 5.6.4
 struct ChaCha : public ChaCha_Info, public SymmetricCipherDocumentation
 {
-	typedef SymmetricCipherFinal<ConcretePolicyHolder<ChaCha_Policy, AdditiveCipherTemplate<> >, ChaCha_Info> Encryption;
+	typedef SymmetricCipherFinal<ConcretePolicyHolder<ChaCha_Policy, AdditiveCipherTemplate<> >, ChaCha_Info > Encryption;
 	typedef Encryption Decryption;
 };
 

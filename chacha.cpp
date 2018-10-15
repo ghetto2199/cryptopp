@@ -30,7 +30,6 @@ void ChaCha_Policy::CipherSetKey(const NameValuePairs &params, const byte *key, 
 	CRYPTOPP_ASSERT(length == 16 || length == 32);
 
 	m_rounds = params.GetIntValueWithDefault(Name::Rounds(), 20);
-
 	if (!(m_rounds == 8 || m_rounds == 12 || m_rounds == 20))
 		throw InvalidRounds(ChaCha::StaticAlgorithmName(), m_rounds);
 
@@ -142,4 +141,3 @@ void ChaCha_Policy::OperateKeystream(KeystreamOperation operation, byte *output,
 }
 
 NAMESPACE_END
-

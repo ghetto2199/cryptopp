@@ -19,12 +19,22 @@
 # define CRYPTOPP_LEA_ADVANCED_PROCESS_BLOCKS 1
 #endif
 
+// Yet another SunStudio/SunCC workaround. Failed self tests
+// in SSE code paths on i386 for SunStudio 12.3 and below.
+#if defined(__SUNPRO_CC) && (__SUNPRO_CC <= 0x5120)
+# undef CRYPTOPP_LEA_ADVANCED_PROCESS_BLOCKS
+#endif
+
 NAMESPACE_BEGIN(CryptoPP)
 
 /// \brief LEA block cipher information
 /// \since Crypto++ 7.1
 struct LEA_Info : public FixedBlockSize<16>, public VariableKeyLength<16,16,32,8>
 {
+    /// \brief The algorithm name
+    /// \returns the algorithm name
+    /// \details StaticAlgorithmName returns the algorithm's name as a static
+    ///   member function.
     static const std::string StaticAlgorithmName()
     {
         // Format is Cipher-Blocksize

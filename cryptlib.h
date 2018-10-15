@@ -48,9 +48,9 @@
 <dt>Compression<dd>
 	Deflator, Inflator, Gzip, Gunzip, ZlibCompressor, ZlibDecompressor
 <dt>Input Source Classes<dd>
-	StringSource, ArraySource, FileSource, SocketSource, WindowsPipeSource, RandomNumberSource
+	StringSource, ArraySource, FileSource, RandomNumberSource
 <dt>Output Sink Classes<dd>
-	StringSinkTemplate, StringSink, ArraySink, FileSink, SocketSink, WindowsPipeSink, RandomNumberSink
+	StringSinkTemplate, StringSink, VectorSink, ArraySink, FileSink, RandomNumberSink
 <dt>Filter Wrappers<dd>
 	StreamTransformationFilter, AuthenticatedEncryptionFilter, AuthenticatedDecryptionFilter, HashFilter,
 	HashVerificationFilter, SignerFilter, SignatureVerificationFilter
@@ -58,7 +58,7 @@
 	HexEncoder, HexDecoder, Base64Encoder, Base64Decoder, Base64URLEncoder, Base64URLDecoder, Base32Encoder,
 	Base32Decoder
 <dt>Wrappers for OS features<dd>
-	Timer, Socket, WindowsHandle, ThreadLocalStorage, ThreadUserTimer
+	Timer, ThreadUserTimer
 
 </dl>
 
@@ -2356,8 +2356,11 @@ public:
 	/// \details DoQuickSanityCheck() is for internal library use, and it should not be called by library users.
 	void DoQuickSanityCheck() const	{ThrowIfInvalid(NullRNG(), 0);}
 
-#if (defined(__SUNPRO_CC) && __SUNPRO_CC < 0x590)
-	// Sun Studio 11/CC 5.8 workaround: it generates incorrect code when casting to an empty virtual base class
+#if defined(__SUNPRO_CC)
+	// Sun Studio 11/CC 5.8 workaround: it generates incorrect code
+	// when casting to an empty virtual base class. JW, 2018: It is
+	// still a problem in Sun Studio 12.6/CC 5.15 on i386. Just enable
+	// it everywhere in case it affects SPARC (which we don't test).
 	char m_sunCCworkaround;
 #endif
 };

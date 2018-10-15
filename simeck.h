@@ -21,12 +21,22 @@
 # define CRYPTOPP_SIMECK_ADVANCED_PROCESS_BLOCKS 1
 #endif
 
+// Yet another SunStudio/SunCC workaround. Failed self tests
+// in SSE code paths on i386 for SunStudio 12.3 and below.
+#if defined(__SUNPRO_CC) && (__SUNPRO_CC <= 0x5120)
+# undef CRYPTOPP_SIMECK_ADVANCED_PROCESS_BLOCKS
+#endif
+
 NAMESPACE_BEGIN(CryptoPP)
 
 /// \brief SIMECK block cipher information
 /// \since Crypto++ 7.1
 struct SIMECK32_Info : public FixedBlockSize<4>, public FixedKeyLength<8>, public FixedRounds<32>
 {
+    /// \brief The algorithm name
+    /// \returns the algorithm name
+    /// \details StaticAlgorithmName returns the algorithm's name as a static
+    ///   member function.
     static const std::string StaticAlgorithmName()
     {
         // Format is Cipher-Blocksize
@@ -38,6 +48,10 @@ struct SIMECK32_Info : public FixedBlockSize<4>, public FixedKeyLength<8>, publi
 /// \since Crypto++ 7.1
 struct SIMECK64_Info : public FixedBlockSize<8>, public FixedKeyLength<16>, public FixedRounds<44>
 {
+    /// \brief The algorithm name
+    /// \returns the algorithm name
+    /// \details StaticAlgorithmName returns the algorithm's name as a static
+    ///   member function.
     static const std::string StaticAlgorithmName()
     {
         // Format is Cipher-Blocksize
@@ -62,7 +76,7 @@ public:
     {
     protected:
         void UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params);
-		std::string AlgorithmProvider() const;
+        std::string AlgorithmProvider() const;
 
         FixedSizeSecBlock<word16, ROUNDS> m_rk;
         mutable FixedSizeSecBlock<word16, 5> m_t;
@@ -112,7 +126,7 @@ public:
     {
     protected:
         void UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params);
-		std::string AlgorithmProvider() const;
+        std::string AlgorithmProvider() const;
 
         FixedSizeSecBlock<word32, ROUNDS> m_rk;
         mutable FixedSizeSecBlock<word32, 5> m_t;
